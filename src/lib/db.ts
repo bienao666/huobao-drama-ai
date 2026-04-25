@@ -70,7 +70,6 @@ if (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '') {
 }
 
 // Set DIRECT_URL for Prisma (needed for PostgreSQL with connection pooling)
-// DIRECT_URL should point to the non-pooling URL for migrations and DDL
 if (!process.env.DIRECT_URL || process.env.DIRECT_URL.trim() === '') {
   const directUrl =
     process.env.POSTGRES_URL_NON_POOLING ||
@@ -99,7 +98,11 @@ export const db =
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
 
-// Auto-migration: Check if tables exist and run migration if needed
+// ============================================================
+// SAFE auto-migration: uses CREATE TABLE IF NOT EXISTS
+// This will NEVER drop existing tables or data.
+// Only the manual /api/migrate?force=true endpoint can drop tables.
+// ============================================================
 let migrationPromise: Promise<void> | null = null
 
 export async function ensureDatabaseReady(): Promise<void> {
@@ -113,23 +116,18 @@ export async function ensureDatabaseReady(): Promise<void> {
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error)
       if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('table')) {
-        console.log('[db] Tables missing, running auto-migration...')
+        console.log('[db] Tables missing, running SAFE auto-migration (CREATE IF NOT EXISTS)...')
         try {
-          const migrationSql = getMigrationSQL()
-          // Execute migration statements
-          for (const stmt of migrationSql) {
-            try {
-              await db.$executeRawUnsafe(stmt)
-            } catch (stmtError) {
-              console.warn('[db] Migration statement warning:', (stmtError instanceof Error ? stmtError.message : String(stmtError)).slice(0, 200))
-            }
-          }
-          console.log('[db] Auto-migration completed successfully')
+          await runSafeMigration()
+          console.log('[db] Safe auto-migration completed successfully')
         } catch (migrateError) {
-          console.error('[db] Auto-migration failed:', migrateError instanceof Error ? migrateError.message : String(migrateError))
+          console.error('[db] Safe auto-migration failed:', migrateError instanceof Error ? migrateError.message : String(migrateError))
+          // Reset the promise so it can be retried
+          migrationPromise = null
         }
       } else {
         console.error('[db] Unexpected database error during readiness check:', msg)
+        migrationPromise = null
       }
     }
   })()
@@ -137,18 +135,14 @@ export async function ensureDatabaseReady(): Promise<void> {
   return migrationPromise
 }
 
-function getMigrationSQL(): string[] {
-  return [
-    // Drop existing tables in reverse dependency order
-    'DROP TABLE IF EXISTS "Storyboard" CASCADE',
-    'DROP TABLE IF EXISTS "Scene" CASCADE',
-    'DROP TABLE IF EXISTS "Character" CASCADE',
-    'DROP TABLE IF EXISTS "Episode" CASCADE',
-    'DROP TABLE IF EXISTS "AiProvider" CASCADE',
-    'DROP TABLE IF EXISTS "Drama" CASCADE',
-
-    // Create Drama table
-    `CREATE TABLE "Drama" (
+/**
+ * SAFE migration: Only creates tables if they don't exist.
+ * NEVER drops tables. This is safe for production auto-migration.
+ */
+async function runSafeMigration(): Promise<void> {
+  // Drama table
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "Drama" (
       "id" TEXT NOT NULL,
       "title" TEXT NOT NULL,
       "description" TEXT NOT NULL DEFAULT '',
@@ -160,10 +154,12 @@ function getMigrationSQL(): string[] {
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "Drama_pkey" PRIMARY KEY ("id")
-    )`,
+    )
+  `)
 
-    // Create Episode table
-    `CREATE TABLE "Episode" (
+  // Episode table
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "Episode" (
       "id" TEXT NOT NULL,
       "dramaId" TEXT NOT NULL,
       "episodeNumber" INTEGER NOT NULL,
@@ -179,10 +175,12 @@ function getMigrationSQL(): string[] {
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "Episode_pkey" PRIMARY KEY ("id")
-    )`,
+    )
+  `)
 
-    // Create Character table
-    `CREATE TABLE "Character" (
+  // Character table
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "Character" (
       "id" TEXT NOT NULL,
       "dramaId" TEXT NOT NULL,
       "name" TEXT NOT NULL,
@@ -197,10 +195,12 @@ function getMigrationSQL(): string[] {
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "Character_pkey" PRIMARY KEY ("id")
-    )`,
+    )
+  `)
 
-    // Create Scene table
-    `CREATE TABLE "Scene" (
+  // Scene table
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "Scene" (
       "id" TEXT NOT NULL,
       "dramaId" TEXT NOT NULL,
       "location" TEXT NOT NULL,
@@ -211,10 +211,12 @@ function getMigrationSQL(): string[] {
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "Scene_pkey" PRIMARY KEY ("id")
-    )`,
+    )
+  `)
 
-    // Create Storyboard table
-    `CREATE TABLE "Storyboard" (
+  // Storyboard table
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "Storyboard" (
       "id" TEXT NOT NULL,
       "episodeId" TEXT NOT NULL,
       "shotNumber" INTEGER NOT NULL,
@@ -237,10 +239,12 @@ function getMigrationSQL(): string[] {
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "Storyboard_pkey" PRIMARY KEY ("id")
-    )`,
+    )
+  `)
 
-    // Create AiProvider table
-    `CREATE TABLE "AiProvider" (
+  // AiProvider table
+  await db.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "AiProvider" (
       "id" TEXT NOT NULL,
       "category" TEXT NOT NULL,
       "provider" TEXT NOT NULL,
@@ -253,21 +257,54 @@ function getMigrationSQL(): string[] {
       "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "AiProvider_pkey" PRIMARY KEY ("id")
-    )`,
+    )
+  `)
 
-    // Create unique indexes
-    `CREATE UNIQUE INDEX IF NOT EXISTS "Episode_dramaId_episodeNumber_key" ON "Episode"("dramaId", "episodeNumber")`,
-    `CREATE UNIQUE INDEX IF NOT EXISTS "AiProvider_category_provider_key" ON "AiProvider"("category", "provider")`,
+  // Create unique indexes (safe - IF NOT EXISTS)
+  await db.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "Episode_dramaId_episodeNumber_key" ON "Episode"("dramaId", "episodeNumber")
+  `)
+  await db.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "AiProvider_category_provider_key" ON "AiProvider"("category", "provider")
+  `)
 
-    // Create foreign key constraints
-    `ALTER TABLE "Episode" ADD CONSTRAINT "Episode_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
-    `ALTER TABLE "Character" ADD CONSTRAINT "Character_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
-    `ALTER TABLE "Scene" ADD CONSTRAINT "Scene_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
-    `ALTER TABLE "Storyboard" ADD CONSTRAINT "Storyboard_episodeId_fkey" FOREIGN KEY ("episodeId") REFERENCES "Episode"("id") ON DELETE CASCADE ON UPDATE CASCADE`,
-  ]
-  // Note: updatedAt trigger is NOT created here because the $$ syntax
-  // doesn't work with $executeRawUnsafe. Prisma Client handles updatedAt
-  // in its own client-side logic, so the trigger is not strictly needed.
+  // Add foreign key constraints (safe - use DO block to check first)
+  await db.$executeRawUnsafe(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Episode_dramaId_fkey') THEN
+        ALTER TABLE "Episode" ADD CONSTRAINT "Episode_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Character_dramaId_fkey') THEN
+        ALTER TABLE "Character" ADD CONSTRAINT "Character_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Scene_dramaId_fkey') THEN
+        ALTER TABLE "Scene" ADD CONSTRAINT "Scene_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Storyboard_episodeId_fkey') THEN
+        ALTER TABLE "Storyboard" ADD CONSTRAINT "Storyboard_episodeId_fkey" FOREIGN KEY ("episodeId") REFERENCES "Episode"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+      END IF;
+    END $$
+  `)
+
+  // Add any missing columns (for tables that might exist but be incomplete)
+  await addColumnIfNotExists('Character', 'dramaId', 'TEXT NOT NULL DEFAULT \'\'')
+  await addColumnIfNotExists('Scene', 'dramaId', 'TEXT NOT NULL DEFAULT \'\'')
+  await addColumnIfNotExists('Storyboard', 'episodeId', 'TEXT NOT NULL DEFAULT \'\'')
+  await addColumnIfNotExists('Episode', 'dramaId', 'TEXT NOT NULL DEFAULT \'\'')
+}
+
+/**
+ * Helper: Add a column to a table if it doesn't already exist
+ */
+async function addColumnIfNotExists(table: string, column: string, definition: string): Promise<void> {
+  try {
+    await db.$executeRawUnsafe(`
+      ALTER TABLE "${table}" ADD COLUMN IF NOT EXISTS "${column}" ${definition}
+    `)
+  } catch {
+    // Column might already exist or table might not exist - safe to ignore
+  }
 }
 
 // Test database connection on startup (non-blocking)

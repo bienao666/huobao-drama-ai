@@ -228,3 +228,22 @@ Stage Summary:
 - Image/video/TTS require user to configure their own API keys (NVIDIA SDXL endpoint unavailable, z-ai-sdk only works locally)
 - Production URL: https://huobao-drama-ai.vercel.app
 - GitHub repo: https://github.com/dav-niu474/huobao-drama-ai
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix persistent /api/dramas 500 error - Character.dramaId column missing
+
+Work Log:
+- Rewrote /api/migrate endpoint to DROP+CREATE tables for clean state
+- Added ensureDatabaseReady() auto-migration in db.ts
+- Updated all 17 API route handlers to call ensureDatabaseReady()
+- Added frontend database initialization via api.init()
+- Fixed trigger function creation for PostgreSQL
+- Set DATABASE_URL and DIRECT_URL env vars on Vercel
+- Updated build.js for proper pooled/direct URL handling
+
+Stage Summary:
+- All database tables now created correctly on Vercel
+- Auto-migration ensures tables exist on first API call
+- All API endpoints verified working on Vercel
