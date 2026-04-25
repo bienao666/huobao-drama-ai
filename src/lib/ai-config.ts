@@ -68,12 +68,12 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
   ],
   image: [
     {
-      provider: 'nvidia',
-      name: 'NVIDIA SDXL',
-      defaultBaseUrl: 'https://ai.api.nvidia.com/v1/genai/stabilityai/stable-diffusion-xl',
-      defaultModel: 'stabilityai/stable-diffusion-xl',
-      description: 'NVIDIA Stable Diffusion XL',
-      envKey: 'NVIDIA_API_KEY',
+      provider: 'siliconflow',
+      name: 'SiliconFlow Image',
+      defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+      defaultModel: 'stabilityai/stable-diffusion-xl-base-1.0',
+      description: 'SiliconFlow — SDXL, FLUX 等（推荐，国内可用）',
+      envKey: 'SILICONFLOW_API_KEY',
     },
     {
       provider: 'openai',
@@ -84,14 +84,6 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       envKey: 'OPENAI_API_KEY',
     },
     {
-      provider: 'siliconflow',
-      name: 'SiliconFlow Image',
-      defaultBaseUrl: 'https://api.siliconflow.cn/v1',
-      defaultModel: 'stabilityai/stable-diffusion-xl-base-1.0',
-      description: 'SiliconFlow — SDXL, FLUX 等',
-      envKey: 'SILICONFLOW_API_KEY',
-    },
-    {
       provider: 'stability',
       name: 'Stability AI',
       defaultBaseUrl: 'https://api.stability.ai/v1',
@@ -100,11 +92,19 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       envKey: 'STABILITY_API_KEY',
     },
     {
+      provider: 'nvidia',
+      name: 'NVIDIA SDXL',
+      defaultBaseUrl: 'https://ai.api.nvidia.com/v1/genai/stabilityai/stable-diffusion-xl',
+      defaultModel: 'stabilityai/stable-diffusion-xl',
+      description: 'NVIDIA Stable Diffusion XL（可能不可用）',
+      envKey: 'NVIDIA_API_KEY',
+    },
+    {
       provider: 'z-ai-sdk',
       name: 'Z-AI SDK',
       defaultBaseUrl: '',
       defaultModel: 'dall-e-3',
-      description: '内置 z-ai-web-dev-sdk（无需额外配置）',
+      description: '内置 z-ai-web-dev-sdk（仅本地开发可用）',
       envKey: '',
     },
     {
@@ -118,19 +118,11 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
   ],
   video: [
     {
-      provider: 'z-ai-sdk',
-      name: 'Z-AI SDK 视频',
-      defaultBaseUrl: '',
-      defaultModel: '',
-      description: '内置 z-ai-web-dev-sdk 视频生成',
-      envKey: '',
-    },
-    {
       provider: 'siliconflow',
       name: 'SiliconFlow Video',
       defaultBaseUrl: 'https://api.siliconflow.cn/v1',
       defaultModel: '',
-      description: 'SiliconFlow 视频生成',
+      description: 'SiliconFlow 视频生成（推荐，国内可用）',
       envKey: 'SILICONFLOW_API_KEY',
     },
     {
@@ -140,6 +132,14 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       defaultModel: '',
       description: '火山引擎 / Kling 视频生成',
       envKey: 'VOLCENGINE_API_KEY',
+    },
+    {
+      provider: 'z-ai-sdk',
+      name: 'Z-AI SDK 视频',
+      defaultBaseUrl: '',
+      defaultModel: '',
+      description: '内置 z-ai-web-dev-sdk 视频生成（仅本地开发可用）',
+      envKey: '',
     },
     {
       provider: 'custom',
@@ -152,19 +152,11 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
   ],
   tts: [
     {
-      provider: 'z-ai-sdk',
-      name: 'Z-AI SDK TTS',
-      defaultBaseUrl: '',
-      defaultModel: '',
-      description: '内置 z-ai-web-dev-sdk 语音合成',
-      envKey: '',
-    },
-    {
       provider: 'openai',
       name: 'OpenAI TTS',
       defaultBaseUrl: 'https://api.openai.com/v1',
       defaultModel: 'tts-1',
-      description: 'OpenAI Text-to-Speech',
+      description: 'OpenAI Text-to-Speech（推荐）',
       envKey: 'OPENAI_API_KEY',
     },
     {
@@ -182,6 +174,14 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       defaultModel: '',
       description: '火山引擎语音合成',
       envKey: 'VOLCENGINE_API_KEY',
+    },
+    {
+      provider: 'z-ai-sdk',
+      name: 'Z-AI SDK TTS',
+      defaultBaseUrl: '',
+      defaultModel: '',
+      description: '内置 z-ai-web-dev-sdk 语音合成（仅本地开发可用）',
+      envKey: '',
     },
     {
       provider: 'custom',
@@ -535,23 +535,34 @@ export const aiClient = {
   ): Promise<string> {
     // Use z-ai-sdk if provider is z-ai-sdk
     if (provider.provider === 'z-ai-sdk') {
-      const ZAI = (await import('z-ai-web-dev-sdk')).default
-      const client = await ZAI.create()
-      const sizeStr = options?.size ?? '1024x1024'
-      const result = await client.images.generations.create({
-        model: provider.model || 'dall-e-3',
-        prompt,
-        n: 1,
-        size: sizeStr,
-        response_format: 'b64_json',
-      })
-      const imageData = result?.data?.[0]
-      // z-ai-sdk returns base64 in 'base64' field, not 'b64_json'
-      const base64 = imageData?.base64 || imageData?.b64_json
-      if (!base64) {
-        throw new Error('z-ai-web-dev-sdk image generation returned no data')
+      try {
+        const ZAI = (await import('z-ai-web-dev-sdk')).default
+        const client = await ZAI.create()
+        const sizeStr = options?.size ?? '1024x1024'
+        const result = await client.images.generations.create({
+          model: provider.model || 'dall-e-3',
+          prompt,
+          n: 1,
+          size: sizeStr,
+          response_format: 'b64_json',
+        })
+        const imageData = result?.data?.[0]
+        // z-ai-sdk returns base64 in 'base64' field, not 'b64_json'
+        const base64 = imageData?.base64 || imageData?.b64_json
+        if (!base64) {
+          throw new Error('z-ai-web-dev-sdk image generation returned no data')
+        }
+        return base64
+      } catch (sdkError) {
+        const msg = sdkError instanceof Error ? sdkError.message : String(sdkError)
+        if (msg.includes('Configuration file not found') || msg.includes('.z-ai-config')) {
+          throw new Error(
+            'Z-AI SDK 仅在本地开发环境可用，Vercel 部署环境不支持。' +
+            '请在设置中配置其他图片生成供应商（如 SiliconFlow、OpenAI、Stability AI）。'
+          )
+        }
+        throw sdkError
       }
-      return base64
     }
 
     // OpenAI-compatible endpoint
