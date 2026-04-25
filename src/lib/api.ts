@@ -55,7 +55,35 @@ export interface SettingsResponse {
 // API client
 // ============================================================
 
+// ---- Database initialization ----
+let _dbInitialized = false
+let _dbInitPromise: Promise<void> | null = null
+
+async function ensureDbReady(): Promise<void> {
+  if (_dbInitialized) return
+  if (_dbInitPromise) return _dbInitPromise
+
+  _dbInitPromise = (async () => {
+    try {
+      const res = await fetch('/api/migrate', { method: 'POST' })
+      if (res.ok) {
+        const data = await res.json()
+        console.log('[api] Database ready:', data.message)
+      }
+      _dbInitialized = true
+    } catch (err) {
+      console.warn('[api] Database init check failed:', err)
+      _dbInitialized = true // Don't block on failure, the server-side auto-migration will handle it
+    }
+  })()
+
+  return _dbInitPromise
+}
+
 export const api = {
+  // Initialize database (call on app startup)
+  init: ensureDbReady,
+
   // ---- Dramas ----
   dramas: {
     list: () =>

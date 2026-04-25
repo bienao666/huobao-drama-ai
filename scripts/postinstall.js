@@ -31,7 +31,6 @@ if (hasPostgres) {
   console.log('[postinstall] PostgreSQL detected, using production schema...')
 
   // Set DATABASE_URL from Vercel Postgres env vars
-  // Priority: non-pooling URL first
   const pgUrl =
     process.env.POSTGRES_URL_NON_POOLING ||
     process.env.huobao_POSTGRES_URL_NON_POOLING ||
@@ -68,7 +67,7 @@ try {
   execSync('npx prisma generate', {
     stdio: 'inherit',
     env: { ...process.env },
-    timeout: 60000  // 60 second timeout
+    timeout: 120000
   })
   console.log('[postinstall] Prisma client generated successfully')
 } catch (error) {
@@ -76,6 +75,5 @@ try {
   // Don't fail - the build.js script will also try
 }
 
-// NOTE: We do NOT run prisma db push in postinstall because it can hang
-// the entire build. Schema push should be done separately or will be
-// attempted in build.js with a timeout.
+// NOTE: We do NOT run prisma db push in postinstall because it can hang.
+// Runtime auto-migration in db.ts will handle table creation.

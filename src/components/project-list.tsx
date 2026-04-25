@@ -210,6 +210,8 @@ export function ProjectListView() {
   const fetchDramas = useCallback(async () => {
     setLoading(true)
     try {
+      // Ensure database is initialized before fetching
+      await api.init()
       const list = await api.dramas.list()
       setDramas(list)
     } catch (err) {
