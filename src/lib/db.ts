@@ -99,9 +99,10 @@ export const db =
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
 
 // ============================================================
-// SAFE auto-migration: uses CREATE TABLE IF NOT EXISTS
-// This will NEVER drop existing tables or data.
-// Only the manual /api/migrate?force=true endpoint can drop tables.
+// SAFE auto-migration: ALWAYS runs on first call
+// Uses CREATE TABLE IF NOT EXISTS - completely safe and idempotent
+// This ensures all tables and columns exist, even if some were
+// partially created by a previous broken migration.
 // ============================================================
 let migrationPromise: Promise<void> | null = null
 
@@ -109,26 +110,17 @@ export async function ensureDatabaseReady(): Promise<void> {
   if (migrationPromise) return migrationPromise
 
   migrationPromise = (async () => {
+    // ALWAYS run safe migration on first call
+    // This is cheap (mostly no-ops with IF NOT EXISTS) and ensures
+    // all tables/columns/constraints exist even after partial failures
+    console.log('[db] Running safe auto-migration (CREATE IF NOT EXISTS)...')
     try {
-      // Quick check: try to query the Drama table
-      await db.drama.count()
-      console.log('[db] Database tables verified - no migration needed')
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error)
-      if (msg.includes('does not exist') || msg.includes('relation') || msg.includes('table')) {
-        console.log('[db] Tables missing, running SAFE auto-migration (CREATE IF NOT EXISTS)...')
-        try {
-          await runSafeMigration()
-          console.log('[db] Safe auto-migration completed successfully')
-        } catch (migrateError) {
-          console.error('[db] Safe auto-migration failed:', migrateError instanceof Error ? migrateError.message : String(migrateError))
-          // Reset the promise so it can be retried
-          migrationPromise = null
-        }
-      } else {
-        console.error('[db] Unexpected database error during readiness check:', msg)
-        migrationPromise = null
-      }
+      await runSafeMigration()
+      console.log('[db] Safe auto-migration completed successfully')
+    } catch (migrateError) {
+      console.error('[db] Safe auto-migration failed:', migrateError instanceof Error ? migrateError.message : String(migrateError))
+      // Reset the promise so it can be retried on next request
+      migrationPromise = null
     }
   })()
 
@@ -308,10 +300,7 @@ async function addColumnIfNotExists(table: string, column: string, definition: s
 }
 
 // Test database connection on startup (non-blocking)
+// Auto-migration runs on first API request via ensureDatabaseReady()
 db.$connect()
-  .then(() => {
-    console.log('[db] Database connection established successfully')
-    // Run auto-migration check after connecting
-    ensureDatabaseReady().catch(() => {})
-  })
+  .then(() => console.log('[db] Database connection established successfully'))
   .catch((err) => console.error('[db] FAILED to connect to database:', err.message || err))
