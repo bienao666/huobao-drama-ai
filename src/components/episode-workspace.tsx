@@ -37,6 +37,8 @@ import {
   ChevronDown,
   PanelLeftClose,
   PanelLeftOpen,
+  Mic,
+  Play,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────────────
@@ -142,6 +144,8 @@ export function EpisodeWorkspace() {
   const [saving, setSaving] = useState(false)
   const [generatingCharImg, setGeneratingCharImg] = useState<string | null>(null)
   const [generatingShotImg, setGeneratingShotImg] = useState<string | null>(null)
+  const [generatingVideo, setGeneratingVideo] = useState<string | null>(null)
+  const [generatingTts, setGeneratingTts] = useState<string | null>(null)
 
   // ── Fetch episode data ─────────────────────────────────────
 
@@ -352,6 +356,67 @@ export function EpisodeWorkspace() {
     }
     setGeneratingShotImg(null)
     toast({ title: `${pending.length}个镜头图片生成完毕` })
+    await fetchEpisode()
+  }
+
+  // ── AI: Generate video for a storyboard ────────────────────
+
+  const handleGenerateVideo = async (storyboard: Storyboard) => {
+    if (!storyboard.videoPrompt && !storyboard.imagePrompt) {
+      toast({ title: '该镜头没有视频提示词', variant: 'destructive' })
+      return
+    }
+    setGeneratingVideo(storyboard.id)
+    try {
+      const prompt = storyboard.videoPrompt ?? storyboard.imagePrompt ?? ''
+      const result = await api.ai.generateVideo(storyboard.id, prompt, storyboard.firstFrameUrl ?? undefined)
+      toast({ title: `镜头 ${storyboard.shotNumber} 视频已生成` })
+      await fetchEpisode()
+    } catch (err) {
+      toast({ title: '视频生成失败', description: String(err), variant: 'destructive' })
+    } finally {
+      setGeneratingVideo(null)
+    }
+  }
+
+  // ── AI: Generate TTS for a storyboard ───────────────────────
+
+  const handleGenerateTts = async (storyboard: Storyboard) => {
+    if (!storyboard.dialogue) {
+      toast({ title: '该镜头没有对白', variant: 'destructive' })
+      return
+    }
+    setGeneratingTts(storyboard.id)
+    try {
+      await api.ai.generateTts(storyboard.id, storyboard.dialogue)
+      toast({ title: `镜头 ${storyboard.shotNumber} 配音已生成` })
+      await fetchEpisode()
+    } catch (err) {
+      toast({ title: '配音生成失败', description: String(err), variant: 'destructive' })
+    } finally {
+      setGeneratingTts(null)
+    }
+  }
+
+  // ── AI: Generate all videos ─────────────────────────────────
+
+  const handleGenerateAllVideos = async () => {
+    const pending = storyboards.filter((s) => s.firstFrameUrl && !s.videoUrl && (s.videoPrompt || s.imagePrompt))
+    if (pending.length === 0) {
+      toast({ title: '没有可生成的镜头视频（需要先生成首帧图片）' })
+      return
+    }
+    for (const sb of pending) {
+      setGeneratingVideo(sb.id)
+      try {
+        const prompt = sb.videoPrompt ?? sb.imagePrompt ?? ''
+        await api.ai.generateVideo(sb.id, prompt, sb.firstFrameUrl ?? undefined)
+      } catch {
+        // Continue with next shot even if one fails
+      }
+    }
+    setGeneratingVideo(null)
+    toast({ title: `${pending.length}个镜头视频生成完毕` })
     await fetchEpisode()
   }
 
@@ -860,6 +925,7 @@ export function EpisodeWorkspace() {
     const hasAnyStoryboard = storyboards.length > 0
     const pendingShots = storyboards.filter((s) => !s.firstFrameUrl && s.imagePrompt)
     const completedShots = storyboards.filter((s) => s.firstFrameUrl)
+    const pendingVideoShots = storyboards.filter((s) => s.firstFrameUrl && !s.videoUrl && (s.videoPrompt || s.imagePrompt))
 
     return (
       <div className="flex flex-col h-full">
@@ -873,21 +939,38 @@ export function EpisodeWorkspace() {
               </Badge>
             )}
           </div>
-          {pendingShots.length > 0 && (
-            <Button
-              size="sm"
-              onClick={handleGenerateAllImages}
-              disabled={!!generatingShotImg}
-              className="amber-glow"
-            >
-              {generatingShotImg ? (
-                <Loader2 className="size-3.5 animate-spin" />
-              ) : (
-                <ImageIcon className="size-3.5" />
-              )}
-              生成全部图片
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {pendingVideoShots.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleGenerateAllVideos}
+                disabled={!!generatingVideo || !!generatingShotImg}
+              >
+                {generatingVideo ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Video className="size-3.5" />
+                )}
+                生成全部视频
+              </Button>
+            )}
+            {pendingShots.length > 0 && (
+              <Button
+                size="sm"
+                onClick={handleGenerateAllImages}
+                disabled={!!generatingShotImg || !!generatingVideo}
+                className="amber-glow"
+              >
+                {generatingShotImg ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <ImageIcon className="size-3.5" />
+                )}
+                生成全部图片
+              </Button>
+            )}
+          </div>
         </div>
 
         {!hasAnyStoryboard ? (
@@ -914,9 +997,16 @@ export function EpisodeWorkspace() {
             <div className="p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {storyboards.map((sb) => (
                 <Card key={sb.id} className="border-border/50 py-0 gap-0 overflow-hidden">
-                  {/* Image area */}
+                  {/* Media area — video or image */}
                   <div className="aspect-video bg-muted/50 relative group">
-                    {sb.firstFrameUrl ? (
+                    {sb.videoUrl ? (
+                      <video
+                        src={sb.videoUrl}
+                        controls
+                        className="w-full h-full object-cover"
+                        poster={sb.firstFrameUrl ?? undefined}
+                      />
+                    ) : sb.firstFrameUrl ? (
                       <img
                         src={sb.firstFrameUrl}
                         alt={`Shot ${sb.shotNumber}`}
@@ -943,14 +1033,19 @@ export function EpisodeWorkspace() {
                         </div>
                       </div>
                     )}
-                    {generatingShotImg === sb.id && (
+                    {(generatingShotImg === sb.id || generatingVideo === sb.id) && (
                       <div className="absolute inset-0 bg-background/60 flex items-center justify-center">
-                        <Loader2 className="size-8 text-primary animate-spin" />
+                        <div className="text-center">
+                          <Loader2 className="size-8 text-primary animate-spin mx-auto mb-2" />
+                          <p className="text-xs text-muted-foreground">
+                            {generatingVideo === sb.id ? '生成视频中...' : '生成图片中...'}
+                          </p>
+                        </div>
                       </div>
                     )}
                   </div>
                   {/* Shot info */}
-                  <CardContent className="p-3">
+                  <CardContent className="p-3 space-y-2">
                     <div className="flex items-center gap-2 mb-1">
                       <span className="text-xs font-bold text-primary">
                         #{String(sb.shotNumber).padStart(2, '0')}
@@ -960,16 +1055,83 @@ export function EpisodeWorkspace() {
                         {shotTypeLabel(sb.shotType)}
                       </Badge>
                     </div>
-                    <div className="flex items-center gap-2">
+                    {/* Status badges */}
+                    <div className="flex items-center gap-2 flex-wrap">
                       {sb.firstFrameUrl ? (
-                        <Badge className="status-completed text-[9px] px-1 py-0">图片已生成</Badge>
+                        <Badge className="status-completed text-[9px] px-1 py-0">图片</Badge>
                       ) : (
                         <Badge variant="outline" className="text-[9px] px-1 py-0">待生成</Badge>
                       )}
-                      {sb.videoUrl && (
-                        <Badge className="status-completed text-[9px] px-1 py-0">视频已生成</Badge>
+                      {sb.videoUrl ? (
+                        <Badge className="status-completed text-[9px] px-1 py-0">视频</Badge>
+                      ) : null}
+                      {sb.ttsAudioUrl ? (
+                        <Badge className="status-completed text-[9px] px-1 py-0">配音</Badge>
+                      ) : null}
+                    </div>
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {sb.firstFrameUrl && !sb.videoUrl && (sb.videoPrompt || sb.imagePrompt) && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleGenerateVideo(sb)}
+                          disabled={generatingVideo === sb.id}
+                          className="h-6 text-[10px] px-2"
+                        >
+                          {generatingVideo === sb.id ? (
+                            <Loader2 className="size-2.5 animate-spin" />
+                          ) : (
+                            <Video className="size-2.5" />
+                          )}
+                          生成视频
+                        </Button>
+                      )}
+                      {sb.dialogue && !sb.ttsAudioUrl && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleGenerateTts(sb)}
+                          disabled={generatingTts === sb.id}
+                          className="h-6 text-[10px] px-2"
+                        >
+                          {generatingTts === sb.id ? (
+                            <Loader2 className="size-2.5 animate-spin" />
+                          ) : (
+                            <Mic className="size-2.5" />
+                          )}
+                          生成配音
+                        </Button>
+                      )}
+                      {!sb.firstFrameUrl && sb.imagePrompt && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => handleGenerateShotImage(sb)}
+                          disabled={generatingShotImg === sb.id}
+                          className="h-6 text-[10px] px-2"
+                        >
+                          {generatingShotImg === sb.id ? (
+                            <Loader2 className="size-2.5 animate-spin" />
+                          ) : (
+                            <ImageIcon className="size-2.5" />
+                          )}
+                          生成图片
+                        </Button>
                       )}
                     </div>
+                    {/* TTS Audio player */}
+                    {sb.ttsAudioUrl && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <Mic className="size-3 text-primary/70 flex-shrink-0" />
+                        <audio
+                          src={sb.ttsAudioUrl}
+                          controls
+                          className="h-6 w-full [&::-webkit-media-controls-panel]:bg-muted/50"
+                          style={{ minWidth: 0 }}
+                        />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}

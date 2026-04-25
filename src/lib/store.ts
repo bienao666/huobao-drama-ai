@@ -102,7 +102,7 @@ export interface Storyboard {
 // View type for client-side navigation
 // ============================================================
 
-export type AppView = 'projects' | 'project-detail' | 'episode-workspace'
+export type AppView = 'projects' | 'project-detail' | 'episode-workspace' | 'settings'
 
 // ============================================================
 // Store interface
@@ -118,6 +118,7 @@ interface AppStore {
   navigateToProjects: () => void
   navigateToProject: (dramaId: string) => void
   navigateToEpisode: (dramaId: string, episodeId: string) => void
+  navigateToSettings: () => void
 
   // Drama data cache
   dramas: Drama[]
@@ -167,6 +168,13 @@ export const useAppStore = create<AppStore>((set) => ({
       view: 'episode-workspace',
       selectedDramaId: dramaId,
       selectedEpisodeId: episodeId,
+    }),
+
+  navigateToSettings: () =>
+    set({
+      view: 'settings',
+      selectedDramaId: null,
+      selectedEpisodeId: null,
     }),
 
   // Drama data cache

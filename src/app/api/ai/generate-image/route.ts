@@ -1,48 +1,43 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { writeFile, mkdir } from 'fs/promises';
-import path from 'path';
-import ZAI from 'z-ai-web-dev-sdk';
+import { NextRequest, NextResponse } from 'next/server'
+import { aiClient } from '@/lib/ai-config'
 
 // POST /api/ai/generate-image - AI Generate Image
+// Returns a data URL (data:image/png;base64,...) for Vercel compatibility
 export async function POST(request: NextRequest) {
   try {
-    const { prompt, size } = await request.json();
+    const { prompt, size, storyboardId, atmosphere } = await request.json()
 
     if (!prompt) {
-      return NextResponse.json({ error: 'prompt is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'prompt is required' },
+        { status: 400 }
+      )
     }
 
-    // Ensure the generated directory exists
-    const generatedDir = path.join(process.cwd(), 'public', 'generated');
-    await mkdir(generatedDir, { recursive: true });
+    // Generate image using aiClient
+    let base64Image: string
 
-    // Call AI to generate image
-    const client = await ZAI.create();
-    const response = await client.images.generations.create({
-      prompt,
-      size: size || '1024x1024',
-    });
-
-    if (!response.data?.[0]?.base64) {
-      return NextResponse.json({ error: 'No image generated' }, { status: 500 });
+    if (storyboardId || atmosphere) {
+      // Use storyboard frame generation for storyboard-related requests
+      base64Image = await aiClient.generateStoryboardFrame(prompt, atmosphere)
+    } else {
+      // Use general image generation
+      const negativePrompt =
+        'blurry, low quality, distorted, watermark, text overlay'
+      base64Image = await aiClient.generateImage(prompt, negativePrompt, {
+        size: (size as '1024x1024' | '512x512' | '256x256') || '1024x1024',
+      })
     }
 
-    // Generate unique filename
-    const timestamp = Date.now();
-    const randomStr = Math.random().toString(36).substring(2, 8);
-    const filename = `img_${timestamp}_${randomStr}.png`;
-    const filepath = path.join(generatedDir, filename);
+    // Convert base64 to data URL for Vercel compatibility (no filesystem writes)
+    const imageUrl = `data:image/png;base64,${base64Image}`
 
-    // Save the base64 image to file
-    const buffer = Buffer.from(response.data[0].base64, 'base64');
-    await writeFile(filepath, buffer);
-
-    // Return the URL path
-    const imageUrl = `/generated/${filename}`;
-
-    return NextResponse.json({ imageUrl, prompt });
+    return NextResponse.json({ imageUrl, prompt })
   } catch (error) {
-    console.error('Failed to generate image:', error);
-    return NextResponse.json({ error: 'Failed to generate image' }, { status: 500 });
+    console.error('Failed to generate image:', error)
+    return NextResponse.json(
+      { error: 'Failed to generate image' },
+      { status: 500 }
+    )
   }
 }

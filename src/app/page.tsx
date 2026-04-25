@@ -5,6 +5,7 @@ import { useAppStore } from '@/lib/store'
 import { ProjectListView } from '@/components/project-list'
 import { ProjectDetailView } from '@/components/project-detail'
 import { EpisodeWorkspace } from '@/components/episode-workspace'
+import { SettingsView } from '@/components/settings-view'
 
 const pageVariants = {
   initial: { opacity: 0, y: 12 },
@@ -34,6 +35,7 @@ function ViewRouter() {
         {view === 'projects' && <ProjectListView />}
         {view === 'project-detail' && <ProjectDetailView />}
         {view === 'episode-workspace' && <EpisodeWorkspace />}
+        {view === 'settings' && <SettingsView />}
       </motion.div>
     </AnimatePresence>
   )

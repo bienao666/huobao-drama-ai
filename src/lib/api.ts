@@ -22,6 +22,31 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 // ============================================================
+// Settings types
+// ============================================================
+
+export interface AiSettings {
+  chatModel: string
+  imageModel: string
+  imageProvider: 'nvidia' | 'z-ai-sdk'
+  ttsVoice: string
+  videoQuality: 'speed' | 'quality'
+  videoDuration: number
+  videoFps: number
+  videoSize: string
+}
+
+export interface SettingsResponse {
+  settings: AiSettings
+  apiStatus: {
+    nvidiaAvailable: boolean
+    imageProvider: string
+    defaultChatModel: string
+    defaultImageModel: string
+  }
+}
+
+// ============================================================
 // API client
 // ============================================================
 
@@ -166,17 +191,63 @@ export const api = {
       ),
 
     generateImage: (prompt: string, size?: string) =>
-      request<{ url: string }>('/api/ai/generate-image', {
+      request<{ imageUrl: string; prompt: string }>('/api/ai/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, size }),
       }),
 
-    generateCharacterImage: (characterId: string) =>
-      request<{ character: Character }>('/api/ai/generate-character-image', {
+    generateCharacterImage: (characterId: string, style?: string) =>
+      request<{ character: Character; imageUrl: string }>(
+        '/api/ai/generate-character-image',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ characterId, style }),
+        }
+      ),
+
+    generateVideo: (
+      storyboardId: string,
+      prompt?: string,
+      firstFrameUrl?: string
+    ) =>
+      request<{ storyboard: Storyboard }>('/api/ai/generate-video', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ characterId }),
+        body: JSON.stringify({ storyboardId, prompt, firstFrameUrl }),
+      }),
+
+    generateTts: (storyboardId: string, text?: string, voiceId?: string) =>
+      request<{ storyboard: Storyboard }>('/api/ai/generate-tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ storyboardId, text, voiceId }),
+      }),
+
+    testConnection: () =>
+      request<{
+        success: boolean
+        model?: string
+        imageProvider?: string
+        nvidiaAvailable: boolean
+        error?: string
+        responsePreview?: string
+      }>('/api/ai/test-connection', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      }),
+  },
+
+  // ---- Settings ----
+  settings: {
+    get: () => request<SettingsResponse>('/api/settings'),
+
+    save: (data: Partial<AiSettings>) =>
+      request<{ settings: AiSettings }>('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
       }),
   },
 }

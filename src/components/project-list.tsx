@@ -35,7 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Plus, Film, Users, MapPin, Clock, Trash2 } from 'lucide-react'
+import { Plus, Film, Users, MapPin, Clock, Trash2, Settings } from 'lucide-react'
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -192,7 +192,7 @@ function ProjectCard({
 // ── main component ───────────────────────────────────────────
 
 export function ProjectListView() {
-  const { dramas, setDramas, navigateToProject, setLoading, loading } = useAppStore()
+  const { dramas, setDramas, navigateToProject, navigateToSettings, setLoading, loading } = useAppStore()
   const { toast } = useToast()
 
   // create dialog
@@ -276,10 +276,15 @@ export function ProjectListView() {
               </Badge>
             )}
           </div>
-          <Button onClick={() => setCreateOpen(true)} className="amber-glow">
-            <Plus className="size-4" />
-            <span className="hidden sm:inline">新建项目</span>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="icon" onClick={navigateToSettings} title="设置">
+              <Settings className="size-4" />
+            </Button>
+            <Button onClick={() => setCreateOpen(true)} className="amber-glow">
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">新建项目</span>
+            </Button>
+          </div>
         </div>
       </header>
 
