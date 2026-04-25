@@ -1,264 +1,636 @@
 // ============================================================
-// AI Service Configuration
-// Centralizes NVIDIA API client access and provides fallback
-// to z-ai-web-dev-sdk for image generation.
+// AI Service Configuration — Multi-Provider Architecture
+// Supports NVIDIA, OpenAI, Stability AI, SiliconFlow,
+// Volcengine, Fish Audio, z-ai-sdk, and custom providers.
+// Provider credentials are loaded from DB (AiProvider table)
+// with env var fallbacks.
 // ============================================================
 
-import {
-  nvidiaChatCompletion,
-  nvidiaChat,
-  nvidiaChatJson,
-  nvidiaGenerateImage,
-  withRetry,
-  NVIDIA_CHAT_MODELS,
-  NVIDIA_IMAGE_MODELS,
-  type ChatMessage,
-  type ChatCompletionOptions,
-  type ChatCompletionResponse,
-  type ImageGenerationOptions,
-  type RetryOptions,
-  type NvidiaApiError,
-} from './nvidia'
-
-// Re-export everything from nvidia for convenience
-export type {
-  ChatMessage,
-  ChatCompletionOptions,
-  ChatCompletionResponse,
-  ImageGenerationOptions,
-  ImageGenerationResponse,
-  RetryOptions,
-  NvidiaApiError,
-} from './nvidia'
-
-export {
-  NVIDIA_CHAT_MODELS,
-  NVIDIA_IMAGE_MODELS,
-  nvidiaChatCompletion,
-  nvidiaChat,
-  nvidiaChatJson,
-  nvidiaGenerateImage,
-  withRetry,
-  parseJsonFromLlmResponse,
-} from './nvidia'
+import { db } from '@/lib/db'
 
 // ============================================================
-// z-ai-web-dev-sdk image generation fallback
+// Provider definitions — preset providers per category
 // ============================================================
+
+export type AiCategory = 'llm' | 'image' | 'video' | 'tts'
+
+export interface ProviderPreset {
+  provider: string
+  name: string
+  defaultBaseUrl: string
+  defaultModel: string
+  description: string
+  envKey: string // env var name for API key fallback
+}
+
+export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
+  llm: [
+    {
+      provider: 'nvidia',
+      name: 'NVIDIA NIM',
+      defaultBaseUrl: 'https://integrate.api.nvidia.com/v1',
+      defaultModel: 'meta/llama-3.1-70b-instruct',
+      description: 'NVIDIA NIM API — Llama 3.1, Mixtral, Nemotron',
+      envKey: 'NVIDIA_API_KEY',
+    },
+    {
+      provider: 'openai',
+      name: 'OpenAI',
+      defaultBaseUrl: 'https://api.openai.com/v1',
+      defaultModel: 'gpt-4o',
+      description: 'OpenAI GPT-4o / GPT-4o-mini',
+      envKey: 'OPENAI_API_KEY',
+    },
+    {
+      provider: 'siliconflow',
+      name: 'SiliconFlow',
+      defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+      defaultModel: 'deepseek-ai/DeepSeek-V3',
+      description: 'SiliconFlow — DeepSeek, Qwen, Llama',
+      envKey: 'SILICONFLOW_API_KEY',
+    },
+    {
+      provider: 'deepseek',
+      name: 'DeepSeek',
+      defaultBaseUrl: 'https://api.deepseek.com/v1',
+      defaultModel: 'deepseek-chat',
+      description: 'DeepSeek official API',
+      envKey: 'DEEPSEEK_API_KEY',
+    },
+    {
+      provider: 'custom',
+      name: '自定义 OpenAI 兼容',
+      defaultBaseUrl: '',
+      defaultModel: '',
+      description: '任何 OpenAI 兼容接口（中转站、私有部署等）',
+      envKey: 'CUSTOM_LLM_API_KEY',
+    },
+  ],
+  image: [
+    {
+      provider: 'nvidia',
+      name: 'NVIDIA SDXL',
+      defaultBaseUrl: 'https://ai.api.nvidia.com/v1/genai/stabilityai/stable-diffusion-xl',
+      defaultModel: 'stabilityai/stable-diffusion-xl',
+      description: 'NVIDIA Stable Diffusion XL',
+      envKey: 'NVIDIA_API_KEY',
+    },
+    {
+      provider: 'openai',
+      name: 'OpenAI DALL·E',
+      defaultBaseUrl: 'https://api.openai.com/v1',
+      defaultModel: 'dall-e-3',
+      description: 'OpenAI DALL·E 3 图片生成',
+      envKey: 'OPENAI_API_KEY',
+    },
+    {
+      provider: 'siliconflow',
+      name: 'SiliconFlow Image',
+      defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+      defaultModel: 'stabilityai/stable-diffusion-xl-base-1.0',
+      description: 'SiliconFlow — SDXL, FLUX 等',
+      envKey: 'SILICONFLOW_API_KEY',
+    },
+    {
+      provider: 'stability',
+      name: 'Stability AI',
+      defaultBaseUrl: 'https://api.stability.ai/v1',
+      defaultModel: 'stable-diffusion-xl-1024-v1-0',
+      description: 'Stability AI 官方 API',
+      envKey: 'STABILITY_API_KEY',
+    },
+    {
+      provider: 'z-ai-sdk',
+      name: 'Z-AI SDK',
+      defaultBaseUrl: '',
+      defaultModel: 'dall-e-3',
+      description: '内置 z-ai-web-dev-sdk（无需额外配置）',
+      envKey: '',
+    },
+    {
+      provider: 'custom',
+      name: '自定义图片接口',
+      defaultBaseUrl: '',
+      defaultModel: '',
+      description: '自定义 OpenAI 兼容图片生成接口',
+      envKey: 'CUSTOM_IMAGE_API_KEY',
+    },
+  ],
+  video: [
+    {
+      provider: 'z-ai-sdk',
+      name: 'Z-AI SDK 视频',
+      defaultBaseUrl: '',
+      defaultModel: '',
+      description: '内置 z-ai-web-dev-sdk 视频生成',
+      envKey: '',
+    },
+    {
+      provider: 'siliconflow',
+      name: 'SiliconFlow Video',
+      defaultBaseUrl: 'https://api.siliconflow.cn/v1',
+      defaultModel: '',
+      description: 'SiliconFlow 视频生成',
+      envKey: 'SILICONFLOW_API_KEY',
+    },
+    {
+      provider: 'volcengine',
+      name: '火山引擎 (Kling)',
+      defaultBaseUrl: 'https://visual.volcengineapi.com',
+      defaultModel: '',
+      description: '火山引擎 / Kling 视频生成',
+      envKey: 'VOLCENGINE_API_KEY',
+    },
+    {
+      provider: 'custom',
+      name: '自定义视频接口',
+      defaultBaseUrl: '',
+      defaultModel: '',
+      description: '自定义视频生成接口',
+      envKey: 'CUSTOM_VIDEO_API_KEY',
+    },
+  ],
+  tts: [
+    {
+      provider: 'z-ai-sdk',
+      name: 'Z-AI SDK TTS',
+      defaultBaseUrl: '',
+      defaultModel: '',
+      description: '内置 z-ai-web-dev-sdk 语音合成',
+      envKey: '',
+    },
+    {
+      provider: 'openai',
+      name: 'OpenAI TTS',
+      defaultBaseUrl: 'https://api.openai.com/v1',
+      defaultModel: 'tts-1',
+      description: 'OpenAI Text-to-Speech',
+      envKey: 'OPENAI_API_KEY',
+    },
+    {
+      provider: 'fish-audio',
+      name: 'Fish Audio',
+      defaultBaseUrl: 'https://api.fish.audio/v1',
+      defaultModel: 'tts-1',
+      description: 'Fish Audio 语音合成',
+      envKey: 'FISH_AUDIO_API_KEY',
+    },
+    {
+      provider: 'volcengine',
+      name: '火山引擎 TTS',
+      defaultBaseUrl: 'https://openspeech.bytedance.com/api/v1',
+      defaultModel: '',
+      description: '火山引擎语音合成',
+      envKey: 'VOLCENGINE_API_KEY',
+    },
+    {
+      provider: 'custom',
+      name: '自定义 TTS 接口',
+      defaultBaseUrl: '',
+      defaultModel: '',
+      description: '自定义 TTS 接口',
+      envKey: 'CUSTOM_TTS_API_KEY',
+    },
+  ],
+}
+
+// ============================================================
+// DB-backed provider config
+// ============================================================
+
+export interface ProviderConfig {
+  category: AiCategory
+  provider: string
+  name: string
+  apiKey: string
+  baseUrl: string
+  model: string
+  isActive: boolean
+}
 
 /**
- * Generate an image using z-ai-web-dev-sdk as a fallback provider.
- * This is used when NVIDIA image generation is unavailable or
- * when a different style/model is needed.
+ * Load the active provider config for a given category from DB.
+ * Falls back to env vars if no DB config is active.
  */
-async function generateImageWithFallback(
-  prompt: string,
-  size: '1024x1024' | '512x512' | '256x256' = '1024x1024'
-): Promise<string> {
-  // Dynamic import to keep z-ai-web-dev-sdk server-side only
-  const { imageGeneration } = await import('z-ai-web-dev-sdk')
-
-  const [width, height] = size.split('x').map(Number)
-
-  const result = await imageGeneration({
-    model: 'dall-e-3',
-    prompt,
-    n: 1,
-    size: `${width}x${height}`,
-    response_format: 'b64_json',
+export async function getActiveProvider(category: AiCategory): Promise<ProviderConfig | null> {
+  // Try DB first
+  const dbProvider = await db.aiProvider.findFirst({
+    where: { category, isActive: true },
+    orderBy: { sort: 'asc' },
   })
 
-  const imageData = result?.data?.[0]
-  if (!imageData?.b64_json) {
-    throw new Error('z-ai-web-dev-sdk image generation returned no data')
+  if (dbProvider && dbProvider.apiKey) {
+    return {
+      category,
+      provider: dbProvider.provider,
+      name: dbProvider.name,
+      apiKey: dbProvider.apiKey,
+      baseUrl: dbProvider.baseUrl,
+      model: dbProvider.model,
+      isActive: true,
+    }
   }
 
-  return imageData.b64_json
-}
+  // Fallback: check env vars
+  const presets = PROVIDER_PRESETS[category]
+  for (const preset of presets) {
+    if (preset.envKey && process.env[preset.envKey]) {
+      return {
+        category,
+        provider: preset.provider,
+        name: preset.name,
+        apiKey: process.env[preset.envKey]!,
+        baseUrl: preset.defaultBaseUrl,
+        model: preset.defaultModel,
+        isActive: true,
+      }
+    }
+  }
 
-// ============================================================
-// AI Configuration
-// ============================================================
-
-export type ImageProvider = 'nvidia' | 'z-ai-sdk'
-
-export interface AiConfig {
-  /** Whether NVIDIA API is configured (has API key) */
-  readonly nvidiaAvailable: boolean
-  /** Preferred provider for image generation */
-  readonly imageProvider: ImageProvider
-  /** Default chat model */
-  readonly defaultChatModel: string
-  /** Default image generation model */
-  readonly defaultImageModel: string
+  return null
 }
 
 /**
- * Get the current AI configuration based on environment variables.
+ * Get all provider configs for a category (for settings UI).
  */
-export function getAiConfig(): AiConfig {
-  const nvidiaApiKey = process.env.NVIDIA_API_KEY
-  const nvidiaAvailable = !!nvidiaApiKey
+export async function getAllProviders(category: AiCategory): Promise<ProviderConfig[]> {
+  const dbProviders = await db.aiProvider.findMany({
+    where: { category },
+    orderBy: { sort: 'asc' },
+  })
 
-  // Determine image provider preference via env var, defaulting to nvidia if key is available
-  const envProvider = process.env.AI_IMAGE_PROVIDER as ImageProvider | undefined
-  let imageProvider: ImageProvider
+  // Merge with presets
+  const presets = PROVIDER_PRESETS[category]
+  const result: ProviderConfig[] = []
 
-  if (envProvider === 'z-ai-sdk') {
-    imageProvider = 'z-ai-sdk'
-  } else if (nvidiaAvailable) {
-    imageProvider = 'nvidia'
-  } else {
-    imageProvider = 'z-ai-sdk'
+  for (const preset of presets) {
+    const existing = dbProviders.find((p) => p.provider === preset.provider)
+    result.push({
+      category,
+      provider: preset.provider,
+      name: existing?.name ?? preset.name,
+      apiKey: existing?.apiKey ?? (preset.envKey ? (process.env[preset.envKey] ?? '') : ''),
+      baseUrl: existing?.baseUrl ?? preset.defaultBaseUrl,
+      model: existing?.model ?? preset.defaultModel,
+      isActive: existing?.isActive ?? false,
+    })
   }
 
-  return {
-    nvidiaAvailable,
-    imageProvider,
-    defaultChatModel: NVIDIA_CHAT_MODELS.LLAMA_70B,
-    defaultImageModel: NVIDIA_IMAGE_MODELS.SDXL,
+  // Add any custom DB providers not in presets
+  for (const dbP of dbProviders) {
+    if (!presets.some((p) => p.provider === dbP.provider)) {
+      result.push({
+        category,
+        provider: dbP.provider,
+        name: dbP.name,
+        apiKey: dbP.apiKey,
+        baseUrl: dbP.baseUrl,
+        model: dbP.model,
+        isActive: dbP.isActive,
+      })
+    }
   }
+
+  return result
+}
+
+/**
+ * Save provider config to DB (upsert).
+ */
+export async function saveProviderConfig(config: ProviderConfig): Promise<void> {
+  await db.aiProvider.upsert({
+    where: {
+      category_provider: {
+        category: config.category,
+        provider: config.provider,
+      },
+    },
+    create: {
+      category: config.category,
+      provider: config.provider,
+      name: config.name,
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      model: config.model,
+      isActive: config.isActive,
+    },
+    update: {
+      name: config.name,
+      apiKey: config.apiKey,
+      baseUrl: config.baseUrl,
+      model: config.model,
+      isActive: config.isActive,
+    },
+  })
+}
+
+/**
+ * Set only one active provider per category (deactivate others).
+ */
+export async function setActiveProvider(category: AiCategory, provider: string): Promise<void> {
+  await db.aiProvider.updateMany({
+    where: { category },
+    data: { isActive: false },
+  })
+  await db.aiProvider.upsert({
+    where: {
+      category_provider: {
+        category,
+        provider,
+      },
+    },
+    create: {
+      category,
+      provider,
+      name: provider,
+      apiKey: '',
+      baseUrl: '',
+      model: '',
+      isActive: true,
+    },
+    update: {
+      isActive: true,
+    },
+  })
 }
 
 // ============================================================
-// Unified AI Client
+// AI Client — unified interface with multi-provider support
 // ============================================================
 
-/**
- * High-level AI client that provides a unified interface for both
- * NVIDIA and z-ai-sdk backends.
- */
 export const aiClient = {
-  // ---- Chat ----
+  // ---- Chat / LLM ----
 
-  /**
-   * Send a chat completion request (NVIDIA only).
-   * Falls back gracefully if NVIDIA is unavailable.
-   */
   async chatCompletion(
-    messages: ChatMessage[],
-    options?: ChatCompletionOptions & RetryOptions
-  ): Promise<ChatCompletionResponse> {
-    const config = getAiConfig()
-    if (!config.nvidiaAvailable) {
-      throw new Error(
-        'NVIDIA API is not configured. Set NVIDIA_API_KEY environment variable.'
-      )
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    options?: {
+      temperature?: number
+      max_tokens?: number
+      model?: string
+    }
+  ) {
+    const provider = await getActiveProvider('llm')
+    if (!provider) {
+      throw new Error('未配置 LLM 供应商。请在设置中配置 API Key。')
     }
 
-    const { maxRetries, baseDelayMs, retryOnRateLimit, retryOnServerError, ...chatOptions } =
-      options ?? {}
+    const body = {
+      model: options?.model ?? provider.model,
+      messages,
+      temperature: options?.temperature ?? 0.7,
+      max_tokens: options?.max_tokens ?? 4096,
+    }
 
-    return withRetry(
-      () => nvidiaChatCompletion(messages, chatOptions),
-      { maxRetries, baseDelayMs, retryOnRateLimit, retryOnServerError }
-    )
+    const url = provider.baseUrl.endsWith('/chat/completions')
+      ? provider.baseUrl
+      : `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${provider.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => 'Unknown error')
+      throw new Error(`LLM API error (${res.status}): ${text.slice(0, 300)}`)
+    }
+
+    return res.json()
   },
 
-  /**
-   * Simple chat: send a prompt, get text back.
-   */
   async chat(
     prompt: string,
     systemPrompt?: string,
-    options?: ChatCompletionOptions & RetryOptions
+    options?: { temperature?: number; max_tokens?: number; model?: string }
   ): Promise<string> {
-    const config = getAiConfig()
-    if (!config.nvidiaAvailable) {
-      throw new Error(
-        'NVIDIA API is not configured. Set NVIDIA_API_KEY environment variable.'
-      )
+    const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = []
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt })
     }
+    messages.push({ role: 'user', content: prompt })
 
-    const { maxRetries, baseDelayMs, retryOnRateLimit, retryOnServerError, ...chatOptions } =
-      options ?? {}
-
-    return withRetry(
-      () => nvidiaChat(prompt, systemPrompt, chatOptions),
-      { maxRetries, baseDelayMs, retryOnRateLimit, retryOnServerError }
-    )
+    const response = await this.chatCompletion(messages, options)
+    return response.choices?.[0]?.message?.content ?? ''
   },
 
-  /**
-   * Chat with JSON response parsing.
-   * Ideal for structured extraction tasks (characters, scenes, storyboards).
-   */
   async chatJson<T = unknown>(
-    messages: ChatMessage[],
-    options?: ChatCompletionOptions & RetryOptions
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>,
+    options?: { temperature?: number; max_tokens?: number; model?: string }
   ): Promise<T> {
-    const config = getAiConfig()
-    if (!config.nvidiaAvailable) {
-      throw new Error(
-        'NVIDIA API is not configured. Set NVIDIA_API_KEY environment variable.'
-      )
-    }
-
-    const { maxRetries, baseDelayMs, retryOnRateLimit, retryOnServerError, ...chatOptions } =
-      options ?? {}
-
-    return withRetry(
-      () => nvidiaChatJson<T>(messages, chatOptions),
-      { maxRetries, baseDelayMs, retryOnRateLimit, retryOnServerError }
+    const hasJsonInstruction = messages.some(
+      (m) =>
+        m.role === 'system' &&
+        (m.content.toLowerCase().includes('json') ||
+          m.content.toLowerCase().includes('json格式'))
     )
+
+    const finalMessages = hasJsonInstruction
+      ? messages
+      : [
+          ...messages,
+          {
+            role: 'system' as const,
+            content:
+              'IMPORTANT: You must respond with valid JSON only. ' +
+              'Do not include any prose, explanations, or markdown formatting. ' +
+              'Return the raw JSON object or array.',
+          },
+        ]
+
+    const response = await this.chatCompletion(finalMessages, {
+      ...options,
+      temperature: options?.temperature ?? 0.3,
+    })
+
+    const content = response.choices?.[0]?.message?.content ?? ''
+    return parseJsonFromLlmResponse<T>(content)
   },
 
   // ---- Image Generation ----
 
-  /**
-   * Generate an image using the configured provider.
-   * Falls back to z-ai-sdk if NVIDIA fails or is unavailable.
-   *
-   * @returns Base64-encoded PNG image string
-   */
   async generateImage(
     prompt: string,
     negativePrompt?: string,
-    options?: ImageGenerationOptions & { size?: '1024x1024' | '512x512' | '256x256' } & RetryOptions
+    options?: { width?: number; height?: number; size?: string }
   ): Promise<string> {
-    const config = getAiConfig()
-    const {
-      size = '1024x1024',
-      maxRetries = 2,
-      baseDelayMs,
-      retryOnRateLimit,
-      retryOnServerError,
-      ...imageOptions
-    } = options ?? {}
-
-    // Primary: Use configured provider
-    if (config.imageProvider === 'nvidia' && config.nvidiaAvailable) {
-      try {
-        return await withRetry(
-          () => nvidiaGenerateImage(prompt, negativePrompt, imageOptions),
-          { maxRetries, baseDelayMs, retryOnRateLimit, retryOnServerError }
-        )
-      } catch (error) {
-        console.warn(
-          '[aiClient] NVIDIA image generation failed, falling back to z-ai-sdk:',
-          error instanceof Error ? error.message : error
-        )
-        // Fall through to z-ai-sdk fallback
-      }
+    const provider = await getActiveProvider('image')
+    if (!provider) {
+      throw new Error('未配置图片生成供应商。请在设置中配置 API Key。')
     }
 
-    // Fallback: z-ai-web-dev-sdk
-    try {
-      return await generateImageWithFallback(prompt, size)
-    } catch (fallbackError) {
-      // If both providers fail, throw a comprehensive error
-      throw new Error(
-        `Image generation failed on all providers. ` +
-          `NVIDIA: ${config.nvidiaAvailable ? 'attempted but failed' : 'not configured'}. ` +
-          `z-ai-sdk: ${fallbackError instanceof Error ? fallbackError.message : 'unknown error'}.`
-      )
+    // Provider-specific implementations
+    if (provider.provider === 'nvidia') {
+      return this._generateImageNvidia(prompt, negativePrompt, provider, options)
+    } else if (provider.provider === 'openai' || provider.provider === 'z-ai-sdk') {
+      return this._generateImageOpenAI(prompt, provider, options)
+    } else if (provider.provider === 'siliconflow') {
+      return this._generateImageOpenAI(prompt, provider, options)
+    } else if (provider.provider === 'stability') {
+      return this._generateImageStability(prompt, negativePrompt, provider, options)
+    } else {
+      // Generic OpenAI-compatible fallback
+      return this._generateImageOpenAI(prompt, provider, options)
     }
   },
 
-  /**
-   * Generate a character portrait image.
-   * Uses optimized settings for portrait-style output.
-   */
+  async _generateImageNvidia(
+    prompt: string,
+    negativePrompt: string | undefined,
+    provider: ProviderConfig,
+    options?: { width?: number; height?: number; size?: string }
+  ): Promise<string> {
+    const text_prompts: Array<{ text: string; weight: number }> = [
+      { text: prompt, weight: 1 },
+    ]
+    if (negativePrompt) {
+      text_prompts.push({ text: negativePrompt, weight: -1 })
+    }
+
+    const body = {
+      text_prompts,
+      cfg_scale: 7,
+      height: options?.height ?? 1024,
+      width: options?.width ?? 1024,
+      steps: 50,
+      sampler: 'K_DPMPP_2M',
+      seed: 0,
+    }
+
+    const res = await fetch(provider.baseUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${provider.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => 'Unknown error')
+      throw new Error(`NVIDIA Image API error (${res.status}): ${text.slice(0, 300)}`)
+    }
+
+    const data = await res.json()
+    if (!data.art) {
+      throw new Error('NVIDIA image generation returned empty result')
+    }
+    return data.art
+  },
+
+  async _generateImageOpenAI(
+    prompt: string,
+    provider: ProviderConfig,
+    options?: { width?: number; height?: number; size?: string }
+  ): Promise<string> {
+    // Use z-ai-sdk if provider is z-ai-sdk
+    if (provider.provider === 'z-ai-sdk') {
+      const { imageGeneration } = await import('z-ai-web-dev-sdk')
+      const sizeStr = options?.size ?? '1024x1024'
+      const result = await imageGeneration({
+        model: provider.model || 'dall-e-3',
+        prompt,
+        n: 1,
+        size: sizeStr,
+        response_format: 'b64_json',
+      })
+      const imageData = result?.data?.[0]
+      if (!imageData?.b64_json) {
+        throw new Error('z-ai-web-dev-sdk image generation returned no data')
+      }
+      return imageData.b64_json
+    }
+
+    // OpenAI-compatible endpoint
+    const url = provider.baseUrl.endsWith('/images/generations')
+      ? provider.baseUrl
+      : `${provider.baseUrl.replace(/\/$/, '')}/images/generations`
+
+    const sizeStr = options?.size ?? '1024x1024'
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${provider.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: provider.model,
+        prompt,
+        n: 1,
+        size: sizeStr,
+        response_format: 'b64_json',
+      }),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => 'Unknown error')
+      throw new Error(`Image API error (${res.status}): ${text.slice(0, 300)}`)
+    }
+
+    const data = await res.json()
+    const b64 = data.data?.[0]?.b64_json
+    if (b64) return b64
+
+    // If url format returned, fetch and convert
+    const imgUrl = data.data?.[0]?.url
+    if (imgUrl) {
+      const imgRes = await fetch(imgUrl)
+      const buffer = Buffer.from(await imgRes.arrayBuffer())
+      return buffer.toString('base64')
+    }
+
+    throw new Error('Image generation returned no data')
+  },
+
+  async _generateImageStability(
+    prompt: string,
+    negativePrompt: string | undefined,
+    provider: ProviderConfig,
+    options?: { width?: number; height?: number }
+  ): Promise<string> {
+    const url = `${provider.baseUrl.replace(/\/$/, '')}/generation/${provider.model}/text-to-image`
+
+    const body: Record<string, unknown> = {
+      text_prompts: [{ text: prompt, weight: 1 }],
+      cfg_scale: 7,
+      height: options?.height ?? 1024,
+      width: options?.width ?? 1024,
+      steps: 30,
+    }
+    if (negativePrompt) {
+      ;(body.text_prompts as Array<{ text: string; weight: number }>).push({
+        text: negativePrompt,
+        weight: -1,
+      })
+    }
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${provider.apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => 'Unknown error')
+      throw new Error(`Stability API error (${res.status}): ${text.slice(0, 300)}`)
+    }
+
+    const data = await res.json()
+    const base64 = data.artifacts?.[0]?.base64
+    if (!base64) {
+      throw new Error('Stability API returned no image data')
+    }
+    return base64
+  },
+
   async generateCharacterPortrait(
     description: string,
     style?: string
@@ -278,15 +650,9 @@ export const aiClient = {
     return this.generateImage(portraitPrompt, negativePrompt, {
       width: 1024,
       height: 1024,
-      cfg_scale: 8,
-      steps: 50,
     })
   },
 
-  /**
-   * Generate a storyboard frame image.
-   * Uses optimized settings for cinematic scene composition.
-   */
   async generateStoryboardFrame(
     description: string,
     atmosphere?: string
@@ -306,60 +672,409 @@ export const aiClient = {
     return this.generateImage(framePrompt, negativePrompt, {
       width: 1344,
       height: 768,
-      cfg_scale: 7,
-      steps: 50,
     })
   },
 
-  // ---- Configuration ----
+  // ---- Video Generation ----
 
-  /** Get current AI configuration */
-  getConfig: getAiConfig,
+  async generateVideo(
+    storyboardId: string,
+    prompt: string,
+    firstFrameUrl?: string
+  ): Promise<void> {
+    const provider = await getActiveProvider('video')
+    if (!provider) {
+      throw new Error('未配置视频生成供应商。请在设置中配置 API Key。')
+    }
+
+    // Update status
+    await db.storyboard.update({
+      where: { id: storyboardId },
+      data: { status: 'processing' },
+    })
+
+    try {
+      let videoUrl = ''
+
+      if (provider.provider === 'z-ai-sdk') {
+        videoUrl = await this._generateVideoZai(prompt, firstFrameUrl)
+      } else if (provider.provider === 'siliconflow') {
+        videoUrl = await this._generateVideoSiliconFlow(prompt, firstFrameUrl, provider)
+      } else if (provider.provider === 'volcengine') {
+        videoUrl = await this._generateVideoVolcengine(prompt, firstFrameUrl, provider)
+      } else {
+        // Generic: try z-ai-sdk as fallback
+        videoUrl = await this._generateVideoZai(prompt, firstFrameUrl)
+      }
+
+      await db.storyboard.update({
+        where: { id: storyboardId },
+        data: { videoUrl, status: 'completed' },
+      })
+    } catch (error) {
+      await db.storyboard.update({
+        where: { id: storyboardId },
+        data: { status: 'failed' },
+      })
+      throw error
+    }
+  },
+
+  async _generateVideoZai(prompt: string, firstFrameUrl?: string): Promise<string> {
+    const ZAI = (await import('z-ai-web-dev-sdk')).default
+    const client = await ZAI.create()
+
+    const videoRequestBody: Record<string, unknown> = {
+      prompt,
+      quality: 'speed',
+      with_audio: false,
+      size: '1344x768',
+      fps: 30,
+      duration: 5,
+    }
+    if (firstFrameUrl) {
+      videoRequestBody.image_url = firstFrameUrl
+    }
+
+    const task = await client.video.generations.create(
+      videoRequestBody as import('z-ai-web-dev-sdk').CreateVideoGenerationBody
+    )
+
+    const maxPolls = 60
+    const pollInterval = 5000
+    let result = await client.async.result.query(task.id)
+    let pollCount = 0
+
+    while (result.task_status === 'PROCESSING' && pollCount < maxPolls) {
+      pollCount++
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
+      result = await client.async.result.query(task.id)
+    }
+
+    if (result.task_status === 'SUCCESS') {
+      const url =
+        result.video_result?.[0]?.url ||
+        result.video_url ||
+        result.url ||
+        result.video ||
+        ''
+      if (!url) throw new Error('Video generation succeeded but no URL was returned')
+      return String(url)
+    } else {
+      throw new Error(
+        `Video generation ${result.task_status === 'FAIL' ? 'failed' : 'timed out'}`
+      )
+    }
+  },
+
+  async _generateVideoSiliconFlow(
+    prompt: string,
+    _firstFrameUrl: string | undefined,
+    provider: ProviderConfig
+  ): Promise<string> {
+    const url = `${provider.baseUrl.replace(/\/$/, '')}/video/submit`
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${provider.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: provider.model || 'ali-video/video-01',
+        prompt,
+        image_size: '1344x768',
+      }),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`SiliconFlow Video API error (${res.status}): ${text.slice(0, 300)}`)
+    }
+
+    const data = await res.json()
+    const requestId = data.requestId || data.id
+
+    if (!requestId) {
+      throw new Error('SiliconFlow video submission returned no request ID')
+    }
+
+    // Poll for result
+    const statusUrl = `${provider.baseUrl.replace(/\/$/, '')}/video/status/${requestId}`
+    const maxPolls = 60
+    const pollInterval = 5000
+
+    for (let i = 0; i < maxPolls; i++) {
+      await new Promise((resolve) => setTimeout(resolve, pollInterval))
+      const statusRes = await fetch(statusUrl, {
+        headers: { Authorization: `Bearer ${provider.apiKey}` },
+      })
+      const statusData = await statusRes.json()
+
+      if (statusData.status === 'Succeed' || statusData.status === 'SUCCESS') {
+        return statusData.results?.videos?.[0]?.url || statusData.video_url || ''
+      }
+      if (statusData.status === 'Failed' || statusData.status === 'FAIL') {
+        throw new Error('SiliconFlow video generation failed')
+      }
+    }
+
+    throw new Error('SiliconFlow video generation timed out')
+  },
+
+  async _generateVideoVolcengine(
+    prompt: string,
+    _firstFrameUrl: string | undefined,
+    _provider: ProviderConfig
+  ): Promise<string> {
+    // Volcengine requires specific SDK, fallback to z-ai-sdk
+    return this._generateVideoZai(prompt, _firstFrameUrl)
+  },
+
+  // ---- TTS Generation ----
+
+  async generateTts(
+    storyboardId: string,
+    text: string,
+    voiceId?: string
+  ): Promise<void> {
+    const provider = await getActiveProvider('tts')
+    if (!provider) {
+      throw new Error('未配置语音合成供应商。请在设置中配置 API Key。')
+    }
+
+    await db.storyboard.update({
+      where: { id: storyboardId },
+      data: { status: 'processing' },
+    })
+
+    try {
+      let audioDataUrl = ''
+
+      if (provider.provider === 'z-ai-sdk') {
+        audioDataUrl = await this._generateTtsZai(text, voiceId)
+      } else if (provider.provider === 'openai') {
+        audioDataUrl = await this._generateTtsOpenAI(text, voiceId, provider)
+      } else if (provider.provider === 'fish-audio') {
+        audioDataUrl = await this._generateTtsFishAudio(text, voiceId, provider)
+      } else {
+        audioDataUrl = await this._generateTtsZai(text, voiceId)
+      }
+
+      await db.storyboard.update({
+        where: { id: storyboardId },
+        data: { ttsAudioUrl: audioDataUrl, status: 'completed' },
+      })
+    } catch (error) {
+      await db.storyboard.update({
+        where: { id: storyboardId },
+        data: { status: 'failed' },
+      })
+      throw error
+    }
+  },
+
+  async _generateTtsZai(text: string, voiceId?: string): Promise<string> {
+    const ZAI = (await import('z-ai-web-dev-sdk')).default
+    const client = await ZAI.create()
+
+    const response = await client.audio.tts.create({
+      input: text,
+      voice: voiceId || 'tongtong',
+      speed: 1.0,
+      response_format: 'wav',
+      stream: false,
+    })
+
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(new Uint8Array(arrayBuffer))
+    const base64Audio = buffer.toString('base64')
+    return `data:audio/wav;base64,${base64Audio}`
+  },
+
+  async _generateTtsOpenAI(
+    text: string,
+    voiceId: string | undefined,
+    provider: ProviderConfig
+  ): Promise<string> {
+    const url = `${provider.baseUrl.replace(/\/$/, '')}/audio/speech`
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${provider.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: provider.model || 'tts-1',
+        input: text,
+        voice: voiceId || 'alloy',
+        response_format: 'wav',
+      }),
+    })
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(`OpenAI TTS API error (${res.status}): ${text.slice(0, 300)}`)
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer())
+    const base64Audio = buffer.toString('base64')
+    return `data:audio/wav;base64,${base64Audio}`
+  },
+
+  async _generateTtsFishAudio(
+    text: string,
+    voiceId: string | undefined,
+    provider: ProviderConfig
+  ): Promise<string> {
+    const url = `${provider.baseUrl.replace(/\/$/, '')}/tts`
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${provider.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text,
+        reference_id: voiceId || '',
+        format: 'wav',
+      }),
+    })
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      throw new Error(`Fish Audio TTS API error (${res.status}): ${errText.slice(0, 300)}`)
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer())
+    const base64Audio = buffer.toString('base64')
+    return `data:audio/wav;base64,${base64Audio}`
+  },
+
+  // ---- Connection Test ----
+
+  async testConnection(category: AiCategory): Promise<{
+    success: boolean
+    provider?: string
+    model?: string
+    error?: string
+    responsePreview?: string
+  }> {
+    try {
+      const provider = await getActiveProvider(category)
+      if (!provider) {
+        return {
+          success: false,
+          error: `未配置 ${category.toUpperCase()} 供应商，请在设置中配置 API Key`,
+        }
+      }
+
+      if (category === 'llm') {
+        const response = await this.chat('Say "OK" and nothing else.', undefined, {
+          max_tokens: 10,
+          temperature: 0,
+        })
+        return {
+          success: true,
+          provider: provider.name,
+          model: provider.model,
+          responsePreview: response.slice(0, 100),
+        }
+      }
+
+      // For other categories, just verify API key is set
+      return {
+        success: true,
+        provider: provider.name,
+        model: provider.model,
+        responsePreview: `${provider.name} API Key 已配置`,
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }
+    }
+  },
 }
 
 // ============================================================
-// Convenience: get the NVIDIA client
+// JSON Response Parsing (same as before)
 // ============================================================
 
-/**
- * Get a typed NVIDIA client object for direct API access.
- * Useful when you need fine-grained control over the NVIDIA API
- * without the abstraction layer of aiClient.
- *
- * @throws Error if NVIDIA_API_KEY is not set
- *
- * @example
- * ```ts
- * const nvidia = getNvidiaClient();
- * const result = await nvidia.chat.completion({
- *   messages: [{ role: 'user', content: 'Hello' }],
- *   model: NVIDIA_CHAT_MODELS.LLAMA_405B,
- * });
- * ```
- */
-export function getNvidiaClient() {
-  const config = getAiConfig()
-  if (!config.nvidiaAvailable) {
-    throw new Error(
-      'NVIDIA API is not configured. Set NVIDIA_API_KEY environment variable.'
-    )
+export function parseJsonFromLlmResponse<T = unknown>(text: string): T {
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    // continue
   }
 
-  return {
-    chat: {
-      completion: nvidiaChatCompletion,
-      simple: nvidiaChat,
-      json: nvidiaChatJson,
-    },
-    image: {
-      generate: nvidiaGenerateImage,
-    },
-    models: {
-      chat: NVIDIA_CHAT_MODELS,
-      image: NVIDIA_IMAGE_MODELS,
-    },
-    retry: withRetry,
+  const fenceMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?\s*```/)
+  if (fenceMatch?.[1]) {
+    try {
+      return JSON.parse(fenceMatch[1]) as T
+    } catch {
+      // continue
+    }
   }
+
+  const objectStart = text.indexOf('{')
+  const arrayStart = text.indexOf('[')
+
+  let jsonStart = -1
+  if (objectStart !== -1 && arrayStart !== -1) {
+    jsonStart = Math.min(objectStart, arrayStart)
+  } else if (objectStart !== -1) {
+    jsonStart = objectStart
+  } else if (arrayStart !== -1) {
+    jsonStart = arrayStart
+  }
+
+  if (jsonStart !== -1) {
+    const opener = text[jsonStart]
+    const closer = opener === '{' ? '}' : ']'
+    let depth = 0
+    let inString = false
+    let escape = false
+
+    for (let i = jsonStart; i < text.length; i++) {
+      const ch = text[i]
+
+      if (escape) {
+        escape = false
+        continue
+      }
+
+      if (ch === '\\' && inString) {
+        escape = true
+        continue
+      }
+
+      if (ch === '"') {
+        inString = !inString
+        continue
+      }
+
+      if (inString) continue
+
+      if (ch === opener) depth++
+      if (ch === closer) depth--
+
+      if (depth === 0) {
+        try {
+          return JSON.parse(text.slice(jsonStart, i + 1)) as T
+        } catch {
+          break
+        }
+      }
+    }
+  }
+
+  throw new Error(
+    `Failed to parse JSON from LLM response. First 500 characters:\n${text.slice(0, 500)}`
+  )
 }
 
 // ============================================================
@@ -367,7 +1082,6 @@ export function getNvidiaClient() {
 // ============================================================
 
 export const AI_SYSTEM_PROMPTS = {
-  /** 剧本改写/润色 */
   SCRIPT_REWRITE: `你是一位专业的短剧编剧。你的任务是将原始故事内容改写为格式化的短剧剧本。
 
 改写规则：
@@ -386,7 +1100,6 @@ export const AI_SYSTEM_PROMPTS = {
 
 请直接输出改写后的剧本，不要添加其他说明。`,
 
-  /** 角色和场景提取 */
   EXTRACT: `你是一位专业的短剧分析师。你的任务是从剧本中提取角色和场景信息。
 
 请从剧本中提取所有角色和场景，以JSON格式返回：
@@ -401,7 +1114,6 @@ export const AI_SYSTEM_PROMPTS = {
 
 只返回JSON，不要添加其他内容。`,
 
-  /** 分镜生成 */
   STORYBOARD: `你是一位专业的短剧分镜师。你的任务是将剧本拆解为分镜镜头。
 
 每个镜头包含以下字段：
@@ -420,28 +1132,5 @@ export const AI_SYSTEM_PROMPTS = {
 
 请以JSON数组格式返回分镜列表。只返回JSON，不要添加其他内容。`,
 
-  /** 通用创作助手 */
   CREATIVE: `你是一位专注于短剧创作的AI助手，擅长写作、分析和创意决策。你的回答应该富有想象力但专业，提供详细、可操作的建议。`,
 } as const
-
-// ============================================================
-// Model selection helpers
-// ============================================================
-
-/**
- * Select the best chat model for a given task complexity.
- */
-export function selectChatModel(
-  task: 'simple' | 'moderate' | 'complex'
-): string {
-  switch (task) {
-    case 'complex':
-      return NVIDIA_CHAT_MODELS.LLAMA_405B
-    case 'moderate':
-      return NVIDIA_CHAT_MODELS.LLAMA_70B
-    case 'simple':
-      return NVIDIA_CHAT_MODELS.NEMOTRON_70B
-    default:
-      return NVIDIA_CHAT_MODELS.LLAMA_70B
-  }
-}

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { aiClient } from '@/lib/ai-config'
 import { db } from '@/lib/db'
-import ZAI from 'z-ai-web-dev-sdk'
 
-// POST /api/ai/generate-tts - Generate TTS audio for a storyboard shot
-// Uses z-ai-web-dev-sdk for TTS (NVIDIA doesn't provide TTS)
+// POST /api/ai/generate-tts - Generate TTS audio for a storyboard shot (multi-provider)
 export async function POST(request: NextRequest) {
   try {
     const { storyboardId, text, voiceId } = await request.json()
@@ -37,54 +36,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update status to processing
-    await db.storyboard.update({
+    // Use multi-provider aiClient
+    await aiClient.generateTts(storyboardId, ttsText, voiceId)
+
+    // Fetch updated storyboard
+    const updatedStoryboard = await db.storyboard.findUnique({
       where: { id: storyboardId },
-      data: { status: 'processing' },
     })
 
-    try {
-      // Create ZAI client
-      const client = await ZAI.create()
-
-      // Generate TTS audio
-      const response = await client.audio.tts.create({
-        input: ttsText,
-        voice: voiceId || 'tongtong',
-        speed: 1.0,
-        response_format: 'wav',
-        stream: false,
-      })
-
-      // Get audio data from response
-      const arrayBuffer = await response.arrayBuffer()
-      const buffer = Buffer.from(new Uint8Array(arrayBuffer))
-
-      // Convert to base64 data URL for Vercel compatibility (no filesystem writes)
-      const base64Audio = buffer.toString('base64')
-      const ttsAudioUrl = `data:audio/wav;base64,${base64Audio}`
-
-      // Update storyboard with TTS audio URL
-      const updatedStoryboard = await db.storyboard.update({
-        where: { id: storyboardId },
-        data: {
-          ttsAudioUrl,
-          status: 'completed',
-        },
-      })
-
-      return NextResponse.json({ storyboard: updatedStoryboard })
-    } catch (aiError) {
-      await db.storyboard.update({
-        where: { id: storyboardId },
-        data: { status: 'failed' },
-      })
-      throw aiError
-    }
+    return NextResponse.json({ storyboard: updatedStoryboard })
   } catch (error) {
     console.error('Failed to generate TTS:', error)
+    const message = error instanceof Error ? error.message : 'Unknown error'
     return NextResponse.json(
-      { error: 'Failed to generate TTS audio' },
+      { error: message },
       { status: 500 }
     )
   }

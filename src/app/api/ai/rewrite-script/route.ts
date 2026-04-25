@@ -14,7 +14,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get episode
     const episode = await db.episode.findUnique({
       where: { id: episodeId },
     })
@@ -30,21 +29,18 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update status to processing
     await db.episode.update({
       where: { id: episodeId },
       data: { scriptStatus: 'processing' },
     })
 
     try {
-      // Call AI to rewrite script using aiClient
       const scriptContent = await aiClient.chat(
         episode.rawContent,
         AI_SYSTEM_PROMPTS.SCRIPT_REWRITE,
-        { maxRetries: 2, temperature: 0.7 }
+        { temperature: 0.7, max_tokens: 8192 }
       )
 
-      // Save to database
       const updated = await db.episode.update({
         where: { id: episodeId },
         data: {
@@ -55,7 +51,6 @@ export async function POST(request: NextRequest) {
 
       return NextResponse.json({ episode: updated, scriptContent })
     } catch (aiError) {
-      // Update status to failed
       await db.episode.update({
         where: { id: episodeId },
         data: { scriptStatus: 'failed' },
@@ -65,7 +60,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Failed to rewrite script:', error)
     return NextResponse.json(
-      { error: 'Failed to rewrite script' },
+      { error: error instanceof Error ? error.message : 'Failed to rewrite script' },
       { status: 500 }
     )
   }

@@ -162,3 +162,34 @@ Stage Summary:
 - Vercel deployment successful with NVIDIA_API_KEY environment variable
 - Production URL: https://huobao-drama-ai.vercel.app
 - GitHub repo: https://github.com/dav-niu474/huobao-drama-ai
+
+---
+Task ID: 6
+Agent: Subagent (settings-view-rewrite)
+Task: Rewrite settings-view.tsx with multi-provider configuration UI
+
+Work Log:
+- Read existing settings-view.tsx, api.ts, ai-config.ts, store.ts, and all relevant UI component files
+- Completely rewrote settings-view.tsx with a tabbed multi-provider configuration interface
+- Implemented 4 category tabs: LLM语言模型, 图片生成, 视频生成, 语音合成
+- Created ProviderCard component with expandable config (API Key with show/hide toggle, Base URL, Model)
+- Created CategoryPanel component with provider list, test connection, and helpful hints
+- Implemented radio-button based active provider switching with immediate backend save
+- Added green checkmark badge for configured providers and red dot badge for unconfigured ones
+- Added "Test Connection" button per category with animated success/failure result display
+- Added helpful text explaining users can copy prompts to use on other platforms if they don't have API keys
+- Used dark cinema theme with amber/gold accents (amber-glow class, bg-muted/30, border-border/50)
+- Mobile-responsive design with 4-column grid tabs that collapse to abbreviations on small screens
+- Sticky header with backdrop blur, back button to navigate to projects
+- All UI text in Chinese as required
+- Used shadcn/ui components: Card, Button, Input, Label, Badge, Tabs, RadioGroup, Switch, Separator
+- Fixed ESLint warning by renaming Image icon import to ImageIcon
+- Lint check passes cleanly
+
+Stage Summary:
+- settings-view.tsx fully rewritten with multi-provider configuration UI
+- Supports all 4 AI categories with per-provider cards
+- Active provider switching with immediate backend persistence
+- API Key show/hide toggle, expandable config sections
+- Test connection per category with visual feedback
+- Dark cinema theme, mobile-responsive, Chinese UI

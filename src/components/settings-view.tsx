@@ -1,16 +1,19 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { motion } from 'framer-motion'
+import { useEffect, useState, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/lib/store'
-import { api } from '@/lib/api'
+import { api, type ProviderConfig, type AiCategory, type ProviderPreset } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Switch } from '@/components/ui/switch'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   ArrowLeft,
   Settings,
@@ -20,105 +23,604 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  Volume2,
-  Film,
+  Eye,
+  EyeOff,
   Sparkles,
+  ImageIcon,
+  Film,
+  Volume2,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Info,
+  Wifi,
 } from 'lucide-react'
+
+// ============================================================
+// Category metadata
+// ============================================================
+
+const CATEGORY_META: Record<AiCategory, { label: string; icon: React.ReactNode; badge: string }> = {
+  llm: {
+    label: 'LLM 语言模型',
+    icon: <Sparkles className="size-4" />,
+    badge: '剧本改写 / 提取 / 分镜',
+  },
+  image: {
+    label: '图片生成',
+    icon: <ImageIcon className="size-4" />,
+    badge: '角色头像 / 分镜首帧',
+  },
+  video: {
+    label: '视频生成',
+    icon: <Film className="size-4" />,
+    badge: '镜头动画',
+  },
+  tts: {
+    label: '语音合成',
+    icon: <Volume2 className="size-4" />,
+    badge: '角色配音',
+  },
+}
+
+// ============================================================
+// Provider Card — one per provider within a category
+// ============================================================
+
+function ProviderCard({
+  provider,
+  preset,
+  isActive,
+  onSetActive,
+  onSave,
+  saving,
+}: {
+  provider: ProviderConfig
+  preset: ProviderPreset | undefined
+  isActive: boolean
+  onSetActive: () => void
+  onSave: (updated: ProviderConfig) => Promise<void>
+  saving: boolean
+}) {
+  const [expanded, setExpanded] = useState(isActive)
+  const [apiKey, setApiKey] = useState(provider.apiKey ?? '')
+  const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? '')
+  const [model, setModel] = useState(provider.model ?? '')
+  const [showKey, setShowKey] = useState(false)
+  const [localSaving, setLocalSaving] = useState(false)
+
+  // Sync local state when provider data changes
+  useEffect(() => {
+    setApiKey(provider.apiKey ?? '')
+    setBaseUrl(provider.baseUrl ?? '')
+    setModel(provider.model ?? '')
+  }, [provider.apiKey, provider.baseUrl, provider.model])
+
+  // Auto-expand active provider
+  useEffect(() => {
+    if (isActive) setExpanded(true)
+  }, [isActive])
+
+  const hasApiKey = Boolean(apiKey.trim())
+
+  const handleSave = async () => {
+    setLocalSaving(true)
+    try {
+      await onSave({
+        ...provider,
+        apiKey,
+        baseUrl,
+        model,
+      })
+    } finally {
+      setLocalSaving(false)
+    }
+  }
+
+  const isSaving = saving || localSaving
+
+  return (
+    <Card
+      className={`border-border/50 transition-all duration-200 ${
+        isActive
+          ? 'ring-1 ring-primary/30 bg-card'
+          : 'bg-card/50 hover:bg-card/80'
+      }`}
+    >
+      <CardContent className="p-4 sm:p-5">
+        {/* Provider header row */}
+        <div className="flex items-start gap-3">
+          {/* Radio button to set active */}
+          <div className="pt-0.5">
+            <RadioGroup
+              value={isActive ? provider.provider : ''}
+              onValueChange={() => {
+                if (!isActive) onSetActive()
+              }}
+              className="flex"
+            >
+              <RadioGroupItem
+                value={provider.provider}
+                id={`${provider.category}-${provider.provider}`}
+                className={isActive ? 'text-primary border-primary' : ''}
+              />
+            </RadioGroup>
+          </div>
+
+          {/* Provider info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <Label
+                htmlFor={`${provider.category}-${provider.provider}`}
+                className="text-sm font-semibold cursor-pointer"
+              >
+                {provider.name}
+              </Label>
+              {isActive ? (
+                <Badge className="text-[10px] bg-primary/15 text-primary border-primary/20 hover:bg-primary/20">
+                  当前使用
+                </Badge>
+              ) : null}
+              {hasApiKey ? (
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] bg-emerald-500/10 text-emerald-500 border-emerald-500/20 gap-1"
+                >
+                  <CheckCircle2 className="size-2.5" />
+                  已配置
+                </Badge>
+              ) : (
+                <Badge
+                  variant="secondary"
+                  className="text-[10px] bg-destructive/10 text-destructive border-destructive/20 gap-1"
+                >
+                  <span className="inline-block size-1.5 rounded-full bg-destructive" />
+                  未配置
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+              {preset?.description ?? provider.name}
+            </p>
+            {preset?.envKey && (
+              <p className="text-[10px] text-muted-foreground/70 mt-0.5">
+                环境变量: {preset.envKey}
+              </p>
+            )}
+          </div>
+
+          {/* Expand toggle */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setExpanded(!expanded)}
+            className="text-muted-foreground hover:text-foreground -mr-2"
+          >
+            {expanded ? (
+              <ChevronUp className="size-4" />
+            ) : (
+              <ChevronDown className="size-4" />
+            )}
+          </Button>
+        </div>
+
+        {/* Expandable configuration */}
+        <AnimatePresence>
+          {expanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="overflow-hidden"
+            >
+              <div className="mt-4 pt-4 border-t border-border/30 space-y-4">
+                {/* API Key */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium flex items-center gap-1.5">
+                    <Key className="size-3" />
+                    API Key
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      type={showKey ? 'text' : 'password'}
+                      placeholder="sk-..."
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      className="bg-muted/30 border-border/50 pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowKey(!showKey)}
+                      className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                    >
+                      {showKey ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                    </Button>
+                  </div>
+                  {!hasApiKey && (
+                    <p className="text-[10px] text-muted-foreground/80 flex items-start gap-1">
+                      <Info className="size-3 mt-0.5 flex-shrink-0" />
+                      没有API Key？可以复制提示词到其他平台使用
+                    </p>
+                  )}
+                </div>
+
+                {/* Base URL & Model */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium">Base URL</Label>
+                    <Input
+                      placeholder={
+                        preset?.defaultBaseUrl
+                          ? `默认: ${preset.defaultBaseUrl}`
+                          : 'https://api.example.com/v1'
+                      }
+                      value={baseUrl}
+                      onChange={(e) => setBaseUrl(e.target.value)}
+                      className="bg-muted/30 border-border/50"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-medium flex items-center gap-1.5">
+                      <Cpu className="size-3" />
+                      模型名称
+                    </Label>
+                    <Input
+                      placeholder={
+                        preset?.defaultModel
+                          ? `默认: ${preset.defaultModel}`
+                          : 'model-name'
+                      }
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      className="bg-muted/30 border-border/50"
+                    />
+                  </div>
+                </div>
+
+                {/* Default values hint */}
+                {(preset?.defaultBaseUrl || preset?.defaultModel) && (
+                  <div className="flex flex-wrap gap-2">
+                    {preset.defaultBaseUrl && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-[10px] h-6"
+                        onClick={() => setBaseUrl(preset.defaultBaseUrl)}
+                      >
+                        使用默认 Base URL
+                      </Button>
+                    )}
+                    {preset.defaultModel && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="text-[10px] h-6"
+                        onClick={() => setModel(preset.defaultModel)}
+                      >
+                        使用默认模型: {preset.defaultModel}
+                      </Button>
+                    )}
+                  </div>
+                )}
+
+                {/* Save button */}
+                <div className="flex justify-end pt-1">
+                  <Button
+                    size="sm"
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="amber-glow"
+                  >
+                    {isSaving ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Save className="size-3.5" />
+                    )}
+                    保存配置
+                  </Button>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ============================================================
+// Category Panel — renders the list of providers for one category
+// ============================================================
+
+function CategoryPanel({
+  category,
+  providers,
+  presets,
+  onSaveProvider,
+  onSetActive,
+  onTestConnection,
+  testResult,
+  testing,
+  savingProvider,
+}: {
+  category: AiCategory
+  providers: ProviderConfig[]
+  presets: ProviderPreset[]
+  onSaveProvider: (config: ProviderConfig) => Promise<void>
+  onSetActive: (category: AiCategory, provider: string) => void
+  onTestConnection: (category: AiCategory) => void
+  testResult: { success: boolean; provider?: string; model?: string; error?: string; responsePreview?: string } | null
+  testing: boolean
+  savingProvider: string | null
+}) {
+  const meta = CATEGORY_META[category]
+
+  return (
+    <div className="space-y-4">
+      {/* Category header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-primary">{meta.icon}</span>
+          <h2 className="text-base font-bold">{meta.label}</h2>
+          <Badge variant="secondary" className="text-[10px]">
+            {meta.badge}
+          </Badge>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onTestConnection(category)}
+          disabled={testing}
+          className="gap-1.5"
+        >
+          {testing ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Wifi className="size-3.5" />
+          )}
+          测试连接
+        </Button>
+      </div>
+
+      {/* Test result */}
+      <AnimatePresence>
+        {testResult && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+          >
+            <Card
+              className={`border-border/50 ${
+                testResult.success ? 'border-emerald-500/30' : 'border-destructive/30'
+              }`}
+            >
+              <CardContent className="p-3 flex items-start gap-3">
+                {testResult.success ? (
+                  <CheckCircle2 className="size-4 text-emerald-500 flex-shrink-0 mt-0.5" />
+                ) : (
+                  <XCircle className="size-4 text-destructive flex-shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">
+                    {testResult.success ? '连接成功' : '连接失败'}
+                  </p>
+                  {testResult.provider && (
+                    <p className="text-xs text-muted-foreground">
+                      供应商: {testResult.provider}
+                      {testResult.model ? ` · 模型: ${testResult.model}` : ''}
+                    </p>
+                  )}
+                  {testResult.responsePreview && (
+                    <p className="text-xs text-muted-foreground truncate">
+                      响应: {testResult.responsePreview}
+                    </p>
+                  )}
+                  {testResult.error && (
+                    <p className="text-xs text-destructive break-all">
+                      {testResult.error}
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Provider list */}
+      <RadioGroup
+        value={providers.find((p) => p.isActive)?.provider ?? ''}
+        onValueChange={(val) => onSetActive(category, val)}
+        className="space-y-3"
+      >
+        {providers.map((provider) => {
+          const preset = presets.find((p) => p.provider === provider.provider)
+          return (
+            <ProviderCard
+              key={`${provider.category}-${provider.provider}`}
+              provider={provider}
+              preset={preset}
+              isActive={provider.isActive}
+              onSetActive={() => onSetActive(category, provider.provider)}
+              onSave={onSaveProvider}
+              saving={savingProvider === `${provider.category}-${provider.provider}`}
+            />
+          )
+        })}
+      </RadioGroup>
+
+      {/* Helpful hint */}
+      <div className="flex items-start gap-2 p-3 rounded-lg bg-muted/20 border border-border/30">
+        <Copy className="size-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          没有 API Key？没关系！您可以在工作区中复制生成的提示词（Prompt），然后到 ChatGPT、Midjourney
+          等平台手动使用。配置 API Key 后可享受平台内一键生成的便捷体验。
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// Main Settings View
+// ============================================================
 
 export function SettingsView() {
   const { navigateToProjects } = useAppStore()
   const { toast } = useToast()
 
-  const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState<{ success: boolean; model?: string; error?: string } | null>(null)
+  // Provider data from API
+  const [providersData, setProvidersData] = useState<Record<AiCategory, ProviderConfig[]>>({
+    llm: [],
+    image: [],
+    video: [],
+    tts: [],
+  })
+  const [presetsData, setPresetsData] = useState<Record<AiCategory, ProviderPreset[]>>({
+    llm: [],
+    image: [],
+    video: [],
+    tts: [],
+  })
 
-  // Settings fields
-  const [llmApiKey, setLlmApiKey] = useState('')
-  const [llmBaseUrl, setLlmBaseUrl] = useState('')
-  const [llmModel, setLlmModel] = useState('')
-  const [imageApiKey, setImageApiKey] = useState('')
-  const [imageBaseUrl, setImageBaseUrl] = useState('')
-  const [imageModel, setImageModel] = useState('')
-  const [ttsApiKey, setTtsApiKey] = useState('')
-  const [ttsBaseUrl, setTtsBaseUrl] = useState('')
-  const [ttsModel, setTtsModel] = useState('')
-  const [videoApiKey, setVideoApiKey] = useState('')
-  const [videoBaseUrl, setVideoBaseUrl] = useState('')
-  const [videoModel, setVideoModel] = useState('')
+  // Loading / saving / testing states
+  const [loading, setLoading] = useState(true)
+  const [savingProvider, setSavingProvider] = useState<string | null>(null)
+  const [testingCategory, setTestingCategory] = useState<AiCategory | null>(null)
+  const [testResults, setTestResults] = useState<
+    Record<AiCategory, { success: boolean; provider?: string; model?: string; error?: string; responsePreview?: string } | null>
+  >({ llm: null, image: null, video: null, tts: null })
 
-  // Load settings
+  // Active tab
+  const [activeTab, setActiveTab] = useState<string>('llm')
+
+  // Load settings on mount
   useEffect(() => {
     const loadSettings = async () => {
+      setLoading(true)
       try {
         const data = await api.settings.get()
-        setLlmApiKey(data.LLM_API_KEY ?? '')
-        setLlmBaseUrl(data.LLM_BASE_URL ?? '')
-        setLlmModel(data.LLM_MODEL ?? '')
-        setImageApiKey(data.IMAGE_API_KEY ?? '')
-        setImageBaseUrl(data.IMAGE_BASE_URL ?? '')
-        setImageModel(data.IMAGE_MODEL ?? '')
-        setTtsApiKey(data.TTS_API_KEY ?? '')
-        setTtsBaseUrl(data.TTS_BASE_URL ?? '')
-        setTtsModel(data.TTS_MODEL ?? '')
-        setVideoApiKey(data.VIDEO_API_KEY ?? '')
-        setVideoBaseUrl(data.VIDEO_BASE_URL ?? '')
-        setVideoModel(data.VIDEO_MODEL ?? '')
-      } catch {
-        // Settings may not exist yet, that's fine
+        setProvidersData(data.providers as Record<AiCategory, ProviderConfig[]>)
+        setPresetsData(data.presets as Record<AiCategory, ProviderPreset[]>)
+      } catch (err) {
+        toast({
+          title: '加载设置失败',
+          description: String(err),
+          variant: 'destructive',
+        })
+      } finally {
+        setLoading(false)
       }
     }
     loadSettings()
-  }, [])
+  }, [toast])
 
-  // Save settings
-  const handleSave = async () => {
-    setSaving(true)
-    try {
-      await api.settings.save({
-        LLM_API_KEY: llmApiKey,
-        LLM_BASE_URL: llmBaseUrl,
-        LLM_MODEL: llmModel,
-        IMAGE_API_KEY: imageApiKey,
-        IMAGE_BASE_URL: imageBaseUrl,
-        IMAGE_MODEL: imageModel,
-        TTS_API_KEY: ttsApiKey,
-        TTS_BASE_URL: ttsBaseUrl,
-        TTS_MODEL: ttsModel,
-        VIDEO_API_KEY: videoApiKey,
-        VIDEO_BASE_URL: videoBaseUrl,
-        VIDEO_MODEL: videoModel,
-      })
-      toast({ title: '设置已保存' })
-    } catch (err) {
-      toast({ title: '保存失败', description: String(err), variant: 'destructive' })
-    } finally {
-      setSaving(false)
-    }
-  }
+  // Update local providers data from API response
+  const updateProvidersFromResponse = useCallback(
+    (updated: Record<string, ProviderConfig[]>) => {
+      setProvidersData(updated as Record<AiCategory, ProviderConfig[]>)
+    },
+    []
+  )
 
-  // Test connection
-  const handleTestConnection = async () => {
-    setTesting(true)
-    setTestResult(null)
-    try {
-      const result = await api.ai.testConnection()
-      setTestResult(result)
-      if (result.success) {
-        toast({ title: '连接成功', description: result.model ? `模型: ${result.model}` : undefined })
-      } else {
-        toast({ title: '连接失败', description: result.error, variant: 'destructive' })
+  // Handle setting active provider
+  const handleSetActive = useCallback(
+    async (category: AiCategory, provider: string) => {
+      try {
+        const result = await api.settings.save({
+          category,
+          provider,
+          isActive: true,
+        })
+        updateProvidersFromResponse(result.providers)
+        toast({ title: '已切换供应商' })
+      } catch (err) {
+        toast({
+          title: '切换失败',
+          description: String(err),
+          variant: 'destructive',
+        })
       }
-    } catch (err) {
-      setTestResult({ success: false, error: String(err) })
-      toast({ title: '连接失败', description: String(err), variant: 'destructive' })
-    } finally {
-      setTesting(false)
-    }
-  }
+    },
+    [toast, updateProvidersFromResponse]
+  )
+
+  // Handle saving provider config
+  const handleSaveProvider = useCallback(
+    async (config: ProviderConfig) => {
+      const key = `${config.category}-${config.provider}`
+      setSavingProvider(key)
+      try {
+        const result = await api.settings.save({
+          category: config.category,
+          provider: config.provider,
+          name: config.name,
+          apiKey: config.apiKey,
+          baseUrl: config.baseUrl,
+          model: config.model,
+          isActive: config.isActive,
+        })
+        updateProvidersFromResponse(result.providers)
+        toast({ title: '配置已保存' })
+      } catch (err) {
+        toast({
+          title: '保存失败',
+          description: String(err),
+          variant: 'destructive',
+        })
+      } finally {
+        setSavingProvider(null)
+      }
+    },
+    [toast, updateProvidersFromResponse]
+  )
+
+  // Handle test connection
+  const handleTestConnection = useCallback(
+    async (category: AiCategory) => {
+      setTestingCategory(category)
+      setTestResults((prev) => ({ ...prev, [category]: null }))
+      try {
+        const result = await api.ai.testConnection(category)
+        setTestResults((prev) => ({ ...prev, [category]: result }))
+        if (result.success) {
+          toast({
+            title: '连接成功',
+            description: result.model ? `模型: ${result.model}` : undefined,
+          })
+        } else {
+          toast({
+            title: '连接失败',
+            description: result.error,
+            variant: 'destructive',
+          })
+        }
+      } catch (err) {
+        const errorResult = {
+          success: false as const,
+          error: String(err),
+        }
+        setTestResults((prev) => ({ ...prev, [category]: errorResult }))
+        toast({
+          title: '连接失败',
+          description: String(err),
+          variant: 'destructive',
+        })
+      } finally {
+        setTestingCategory(null)
+      }
+    },
+    [toast]
+  )
 
   return (
-    <div className="flex-1 flex flex-col">
+    <div className="flex-1 flex flex-col min-h-screen">
       {/* Header */}
       <header className="sticky top-0 z-10 border-b border-border/50 bg-background/80 backdrop-blur-md">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
@@ -136,267 +638,84 @@ export function SettingsView() {
             <Settings className="size-5 text-primary" />
             <h1 className="text-xl font-bold">平台设置</h1>
           </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleTestConnection}
-              disabled={testing}
-            >
-              {testing ? <Loader2 className="size-3.5 animate-spin" /> : <Cpu className="size-3.5" />}
-              测试连接
-            </Button>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={saving}
-              className="amber-glow"
-            >
-              {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-              保存设置
-            </Button>
-          </div>
         </div>
       </header>
 
       {/* Content */}
       <main className="flex-1 max-w-4xl mx-auto w-full px-4 sm:px-6 py-6 space-y-6">
-        {/* Connection test result */}
-        {testResult && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
-            <Card className={`border-border/50 ${testResult.success ? 'border-emerald-500/30' : 'border-destructive/30'}`}>
-              <CardContent className="p-4 flex items-center gap-3">
-                {testResult.success ? (
-                  <CheckCircle2 className="size-5 text-emerald-500 flex-shrink-0" />
-                ) : (
-                  <XCircle className="size-5 text-destructive flex-shrink-0" />
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium">
-                    {testResult.success ? '连接成功' : '连接失败'}
-                  </p>
-                  {(testResult.model || testResult.error) && (
-                    <p className="text-xs text-muted-foreground">
-                      {testResult.model && `模型: ${testResult.model}`}
-                      {testResult.error && `错误: ${testResult.error}`}
-                    </p>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+        {/* Loading state */}
+        {loading ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="text-center space-y-3">
+              <Loader2 className="size-8 animate-spin text-primary mx-auto" />
+              <p className="text-sm text-muted-foreground">正在加载设置...</p>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Tabs for categories */}
+            <Tabs
+              value={activeTab}
+              onValueChange={setActiveTab}
+              className="w-full"
+            >
+              <TabsList className="w-full sm:w-auto grid grid-cols-4 sm:inline-flex h-auto p-1">
+                {(Object.keys(CATEGORY_META) as AiCategory[]).map((cat) => {
+                  const meta = CATEGORY_META[cat]
+                  const activeProvider = providersData[cat]?.find((p) => p.isActive)
+                  const hasAnyKey = providersData[cat]?.some((p) => p.apiKey)
+                  return (
+                    <TabsTrigger
+                      key={cat}
+                      value={cat}
+                      className="gap-1.5 text-xs sm:text-sm py-2 px-2 sm:px-3"
+                    >
+                      {meta.icon}
+                      <span className="hidden sm:inline">{meta.label}</span>
+                      <span className="sm:hidden">
+                        {cat === 'llm' ? 'LLM' : cat === 'tts' ? 'TTS' : cat === 'image' ? '图片' : '视频'}
+                      </span>
+                      {activeProvider ? (
+                        <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
+                      ) : hasAnyKey ? (
+                        <span className="inline-block size-1.5 rounded-full bg-amber-500" />
+                      ) : null}
+                    </TabsTrigger>
+                  )
+                })}
+              </TabsList>
+
+              {(Object.keys(CATEGORY_META) as AiCategory[]).map((category) => (
+                <TabsContent key={category} value={category} className="mt-4">
+                  <CategoryPanel
+                    category={category}
+                    providers={providersData[category] ?? []}
+                    presets={presetsData[category] ?? []}
+                    onSaveProvider={handleSaveProvider}
+                    onSetActive={handleSetActive}
+                    onTestConnection={handleTestConnection}
+                    testResult={testResults[category]}
+                    testing={testingCategory === category}
+                    savingProvider={savingProvider}
+                  />
+                </TabsContent>
+              ))}
+            </Tabs>
+
+            {/* Bottom info */}
+            <div className="pt-4 pb-8 border-t border-border/30">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <p className="text-xs text-muted-foreground flex items-start gap-1.5">
+                  <Info className="size-3.5 mt-0.5 flex-shrink-0" />
+                  API Key 等敏感信息仅保存在服务端，不会泄露到客户端
+                </p>
+                <p className="text-[10px] text-muted-foreground/60">
+                  配置完成后可返回项目开始创作
+                </p>
+              </div>
+            </div>
+          </>
         )}
-
-        {/* LLM Settings */}
-        <Card className="border-border/50">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Sparkles className="size-4 text-primary" />
-              LLM 语言模型
-              <Badge variant="secondary" className="text-[10px]">剧本改写 / 提取 / 分镜</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-1.5">
-                  <Key className="size-3" />
-                  API Key
-                </Label>
-                <Input
-                  type="password"
-                  placeholder="sk-..."
-                  value={llmApiKey}
-                  onChange={(e) => setLlmApiKey(e.target.value)}
-                  className="bg-muted/30 border-border/50"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-1.5">
-                  <Cpu className="size-3" />
-                  模型名称
-                </Label>
-                <Input
-                  placeholder="gpt-4o / deepseek-chat / ..."
-                  value={llmModel}
-                  onChange={(e) => setLlmModel(e.target.value)}
-                  className="bg-muted/30 border-border/50"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Base URL</Label>
-              <Input
-                placeholder="https://api.openai.com/v1"
-                value={llmBaseUrl}
-                onChange={(e) => setLlmBaseUrl(e.target.value)}
-                className="bg-muted/30 border-border/50"
-              />
-              <p className="text-[10px] text-muted-foreground">支持 OpenAI 兼容接口，可使用中转站地址</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Image Generation Settings */}
-        <Card className="border-border/50">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Film className="size-4 text-primary" />
-              图片生成
-              <Badge variant="secondary" className="text-[10px]">角色头像 / 分镜首帧</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-1.5">
-                  <Key className="size-3" />
-                  API Key
-                </Label>
-                <Input
-                  type="password"
-                  placeholder="sk-..."
-                  value={imageApiKey}
-                  onChange={(e) => setImageApiKey(e.target.value)}
-                  className="bg-muted/30 border-border/50"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-1.5">
-                  <Cpu className="size-3" />
-                  模型名称
-                </Label>
-                <Input
-                  placeholder="dall-e-3 / flux / ..."
-                  value={imageModel}
-                  onChange={(e) => setImageModel(e.target.value)}
-                  className="bg-muted/30 border-border/50"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Base URL</Label>
-              <Input
-                placeholder="https://api.openai.com/v1"
-                value={imageBaseUrl}
-                onChange={(e) => setImageBaseUrl(e.target.value)}
-                className="bg-muted/30 border-border/50"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Video Generation Settings */}
-        <Card className="border-border/50">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Film className="size-4 text-primary" />
-              视频生成
-              <Badge variant="secondary" className="text-[10px]">镜头动画</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-1.5">
-                  <Key className="size-3" />
-                  API Key
-                </Label>
-                <Input
-                  type="password"
-                  placeholder="sk-..."
-                  value={videoApiKey}
-                  onChange={(e) => setVideoApiKey(e.target.value)}
-                  className="bg-muted/30 border-border/50"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-1.5">
-                  <Cpu className="size-3" />
-                  模型名称
-                </Label>
-                <Input
-                  placeholder="kling / runway / ..."
-                  value={videoModel}
-                  onChange={(e) => setVideoModel(e.target.value)}
-                  className="bg-muted/30 border-border/50"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Base URL</Label>
-              <Input
-                placeholder="https://api.example.com/v1"
-                value={videoBaseUrl}
-                onChange={(e) => setVideoBaseUrl(e.target.value)}
-                className="bg-muted/30 border-border/50"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* TTS Settings */}
-        <Card className="border-border/50">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Volume2 className="size-4 text-primary" />
-              语音合成 (TTS)
-              <Badge variant="secondary" className="text-[10px]">角色配音</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-1.5">
-                  <Key className="size-3" />
-                  API Key
-                </Label>
-                <Input
-                  type="password"
-                  placeholder="sk-..."
-                  value={ttsApiKey}
-                  onChange={(e) => setTtsApiKey(e.target.value)}
-                  className="bg-muted/30 border-border/50"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs font-medium flex items-center gap-1.5">
-                  <Cpu className="size-3" />
-                  模型名称
-                </Label>
-                <Input
-                  placeholder="tts-1 / cosmos / ..."
-                  value={ttsModel}
-                  onChange={(e) => setTtsModel(e.target.value)}
-                  className="bg-muted/30 border-border/50"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-xs font-medium">Base URL</Label>
-              <Input
-                placeholder="https://api.openai.com/v1"
-                value={ttsBaseUrl}
-                onChange={(e) => setTtsBaseUrl(e.target.value)}
-                className="bg-muted/30 border-border/50"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Bottom save */}
-        <div className="flex items-center justify-between pt-2 pb-8">
-          <p className="text-xs text-muted-foreground">
-            API Key 等敏感信息仅保存在服务端，不会泄露到客户端
-          </p>
-          <Button onClick={handleSave} disabled={saving} className="amber-glow">
-            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-            保存设置
-          </Button>
-        </div>
       </main>
     </div>
   )

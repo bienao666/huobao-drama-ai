@@ -1,68 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getAiConfig, NVIDIA_CHAT_MODELS, NVIDIA_IMAGE_MODELS } from '@/lib/ai-config'
-import { writeFile, readFile, mkdir } from 'fs/promises'
-import path from 'path'
+import { db } from '@/lib/db'
+import { getAllProviders, saveProviderConfig, setActiveProvider, PROVIDER_PRESETS, type AiCategory } from '@/lib/ai-config'
 
-// Path to the settings file (stored in project root for local dev)
-const SETTINGS_FILE = path.join(process.cwd(), 'ai-settings.json')
-
-interface AiSettings {
-  chatModel: string
-  imageModel: string
-  imageProvider: 'nvidia' | 'z-ai-sdk'
-  ttsVoice: string
-  videoQuality: 'speed' | 'quality'
-  videoDuration: number
-  videoFps: number
-  videoSize: string
-}
-
-const DEFAULT_SETTINGS: AiSettings = {
-  chatModel: NVIDIA_CHAT_MODELS.LLAMA_70B,
-  imageModel: NVIDIA_IMAGE_MODELS.SDXL,
-  imageProvider: 'nvidia',
-  ttsVoice: 'tongtong',
-  videoQuality: 'speed',
-  videoDuration: 5,
-  videoFps: 30,
-  videoSize: '1344x768',
-}
-
-async function readSettings(): Promise<AiSettings> {
-  try {
-    const data = await readFile(SETTINGS_FILE, 'utf-8')
-    return { ...DEFAULT_SETTINGS, ...JSON.parse(data) } as AiSettings
-  } catch {
-    return { ...DEFAULT_SETTINGS }
-  }
-}
-
-async function writeSettings(settings: Partial<AiSettings>): Promise<AiSettings> {
-  const current = await readSettings()
-  const updated = { ...current, ...settings }
-
-  // Ensure directory exists
-  const dir = path.dirname(SETTINGS_FILE)
-  await mkdir(dir, { recursive: true })
-
-  await writeFile(SETTINGS_FILE, JSON.stringify(updated, null, 2), 'utf-8')
-  return updated
-}
-
-// GET /api/settings - Return current settings
+// GET /api/settings - Return current settings with provider configs
 export async function GET() {
   try {
-    const config = getAiConfig()
-    const settings = await readSettings()
+    // Get all provider configs from DB
+    const providers: Record<string, Awaited<ReturnType<typeof getAllProviders>>> = {}
+    for (const cat of ['llm', 'image', 'video', 'tts'] as AiCategory[]) {
+      providers[cat] = await getAllProviders(cat)
+    }
 
     return NextResponse.json({
-      settings,
-      apiStatus: {
-        nvidiaAvailable: config.nvidiaAvailable,
-        imageProvider: config.imageProvider,
-        defaultChatModel: config.defaultChatModel,
-        defaultImageModel: config.defaultImageModel,
-      },
+      providers,
+      presets: PROVIDER_PRESETS,
     })
   } catch (error) {
     console.error('Failed to read settings:', error)
@@ -73,13 +24,41 @@ export async function GET() {
   }
 }
 
-// POST /api/settings - Save settings
+// POST /api/settings - Save provider configs
 export async function POST(request: NextRequest) {
   try {
     const data = await request.json()
-    const updated = await writeSettings(data)
+    const { category, provider, name, apiKey, baseUrl, model, isActive } = data
 
-    return NextResponse.json({ settings: updated })
+    if (!category || !provider) {
+      return NextResponse.json(
+        { error: 'category and provider are required' },
+        { status: 400 }
+      )
+    }
+
+    // If this is being set as active, deactivate others in same category
+    if (isActive) {
+      await setActiveProvider(category as AiCategory, provider)
+    }
+
+    await saveProviderConfig({
+      category: category as AiCategory,
+      provider,
+      name: name || provider,
+      apiKey: apiKey || '',
+      baseUrl: baseUrl || '',
+      model: model || '',
+      isActive: isActive ?? false,
+    })
+
+    // Return updated providers
+    const providers: Record<string, Awaited<ReturnType<typeof getAllProviders>>> = {}
+    for (const cat of ['llm', 'image', 'video', 'tts'] as AiCategory[]) {
+      providers[cat] = await getAllProviders(cat)
+    }
+
+    return NextResponse.json({ providers })
   } catch (error) {
     console.error('Failed to save settings:', error)
     return NextResponse.json(

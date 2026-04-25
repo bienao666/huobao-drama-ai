@@ -3,8 +3,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "sqlite"
+  url       = env("DATABASE_URL")
 }
 
 // ============ Drama Project ============
@@ -107,4 +107,21 @@ model Storyboard {
   updatedAt      DateTime @updatedAt
 
   episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+}
+
+// ============ AI Provider Configuration ============
+model AiProvider {
+  id          String   @id @default(cuid())
+  category    String   // "llm" | "image" | "video" | "tts"
+  provider    String   // "nvidia" | "openai" | "stability" | "z-ai-sdk" | "siliconflow" | "volcengine" | "fish-audio" | custom
+  name        String   // Display name
+  apiKey      String   @default("")
+  baseUrl     String   @default("")
+  model       String   @default("")
+  isActive    Boolean  @default(false)
+  sort        Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([category, provider])
 }

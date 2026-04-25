@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { aiClient, AI_SYSTEM_PROMPTS, type ChatMessage } from '@/lib/ai-config'
+import { aiClient, AI_SYSTEM_PROMPTS } from '@/lib/ai-config'
 
-// Type for the extracted data from the AI
 interface ExtractedData {
   characters: Array<{
     name: string
@@ -31,7 +30,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get episode
     const episode = await db.episode.findUnique({
       where: { id: episodeId },
     })
@@ -47,27 +45,23 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update extract status to processing
     await db.episode.update({
       where: { id: episodeId },
       data: { extractStatus: 'processing' },
     })
 
     try {
-      // Call AI to extract characters and scenes using chatJson
-      const messages: ChatMessage[] = [
-        { role: 'system', content: AI_SYSTEM_PROMPTS.EXTRACT },
-        { role: 'user', content: episode.scriptContent },
+      const messages = [
+        { role: 'system' as const, content: AI_SYSTEM_PROMPTS.EXTRACT },
+        { role: 'user' as const, content: episode.scriptContent },
       ]
 
       const extracted = await aiClient.chatJson<ExtractedData>(messages, {
-        maxRetries: 2,
         temperature: 0.3,
       })
 
       const { characters = [], scenes = [] } = extracted
 
-      // Save characters to database
       const savedCharacters = []
       for (const char of characters) {
         const saved = await db.character.create({
@@ -83,7 +77,6 @@ export async function POST(request: NextRequest) {
         savedCharacters.push(saved)
       }
 
-      // Save scenes to database
       const savedScenes = []
       for (const scene of scenes) {
         const saved = await db.scene.create({
@@ -98,7 +91,6 @@ export async function POST(request: NextRequest) {
         savedScenes.push(saved)
       }
 
-      // Update extract status
       await db.episode.update({
         where: { id: episodeId },
         data: { extractStatus: 'completed' },
@@ -109,7 +101,6 @@ export async function POST(request: NextRequest) {
         scenes: savedScenes,
       })
     } catch (aiError) {
-      // Update status to failed
       await db.episode.update({
         where: { id: episodeId },
         data: { extractStatus: 'failed' },
@@ -119,7 +110,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Failed to extract characters and scenes:', error)
     return NextResponse.json(
-      { error: 'Failed to extract characters and scenes' },
+      { error: error instanceof Error ? error.message : 'Failed to extract' },
       { status: 500 }
     )
   }

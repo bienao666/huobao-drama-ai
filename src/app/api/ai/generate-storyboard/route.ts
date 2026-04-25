@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { aiClient, AI_SYSTEM_PROMPTS, type ChatMessage } from '@/lib/ai-config'
+import { aiClient, AI_SYSTEM_PROMPTS } from '@/lib/ai-config'
 
-// Type for storyboard shot from AI
 interface StoryboardShot {
   shotNumber: number
   title: string
@@ -30,7 +29,6 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get episode with drama info
     const episode = await db.episode.findUnique({
       where: { id: episodeId },
       include: {
@@ -54,14 +52,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update storyboard status to processing
     await db.episode.update({
       where: { id: episodeId },
       data: { storyboardStatus: 'processing' },
     })
 
     try {
-      // Build context from characters and scenes
       const charactersInfo = episode.drama.characters
         .map(
           (c) =>
@@ -81,23 +77,19 @@ ${episode.scriptContent}
 
 ${charactersInfo ? `角色列表：\n${charactersInfo}\n` : ''}${scenesInfo ? `场景列表：\n${scenesInfo}` : ''}`
 
-      // Call AI to generate storyboard using chatJson
-      const messages: ChatMessage[] = [
-        { role: 'system', content: AI_SYSTEM_PROMPTS.STORYBOARD },
-        { role: 'user', content: userContent },
+      const messages = [
+        { role: 'system' as const, content: AI_SYSTEM_PROMPTS.STORYBOARD },
+        { role: 'user' as const, content: userContent },
       ]
 
       const shots = await aiClient.chatJson<StoryboardShot[]>(messages, {
-        maxRetries: 2,
         temperature: 0.5,
       })
 
-      // Delete existing storyboards for this episode
       await db.storyboard.deleteMany({
         where: { episodeId },
       })
 
-      // Save storyboard shots to database
       const savedStoryboards = []
       for (const shot of shots) {
         const saved = await db.storyboard.create({
@@ -120,7 +112,6 @@ ${charactersInfo ? `角色列表：\n${charactersInfo}\n` : ''}${scenesInfo ? `�
         savedStoryboards.push(saved)
       }
 
-      // Update storyboard status
       await db.episode.update({
         where: { id: episodeId },
         data: { storyboardStatus: 'completed' },
@@ -128,7 +119,6 @@ ${charactersInfo ? `角色列表：\n${charactersInfo}\n` : ''}${scenesInfo ? `�
 
       return NextResponse.json({ storyboards: savedStoryboards })
     } catch (aiError) {
-      // Update status to failed
       await db.episode.update({
         where: { id: episodeId },
         data: { storyboardStatus: 'failed' },
@@ -138,7 +128,7 @@ ${charactersInfo ? `角色列表：\n${charactersInfo}\n` : ''}${scenesInfo ? `�
   } catch (error) {
     console.error('Failed to generate storyboard:', error)
     return NextResponse.json(
-      { error: 'Failed to generate storyboard' },
+      { error: error instanceof Error ? error.message : 'Failed to generate storyboard' },
       { status: 500 }
     )
   }

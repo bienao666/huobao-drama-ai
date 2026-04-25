@@ -39,6 +39,8 @@ import {
   PanelLeftOpen,
   Mic,
   Play,
+  Copy,
+  Upload,
 } from 'lucide-react'
 
 // ── Types ────────────────────────────────────────────────────
@@ -146,6 +148,8 @@ export function EpisodeWorkspace() {
   const [generatingShotImg, setGeneratingShotImg] = useState<string | null>(null)
   const [generatingVideo, setGeneratingVideo] = useState<string | null>(null)
   const [generatingTts, setGeneratingTts] = useState<string | null>(null)
+  const [copiedField, setCopiedField] = useState<string | null>(null)
+  const [uploadingField, setUploadingField] = useState<string | null>(null)
 
   // ── Fetch episode data ─────────────────────────────────────
 
@@ -420,6 +424,43 @@ export function EpisodeWorkspace() {
     await fetchEpisode()
   }
 
+  // ── Copy to clipboard ──────────────────────────────────────
+
+  const handleCopy = async (text: string, fieldId: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopiedField(fieldId)
+      toast({ title: '已复制到剪贴板' })
+      setTimeout(() => setCopiedField(null), 2000)
+    } catch {
+      toast({ title: '复制失败', variant: 'destructive' })
+    }
+  }
+
+  // ── Upload local file ──────────────────────────────────────
+
+  const handleUpload = async (
+    file: File,
+    options: {
+      storyboardId?: string
+      characterId?: string
+      sceneId?: string
+      fieldType: string
+    },
+    fieldKey: string
+  ) => {
+    setUploadingField(fieldKey)
+    try {
+      await api.upload.file(file, options)
+      toast({ title: '上传成功' })
+      await fetchEpisode()
+    } catch (err) {
+      toast({ title: '上传失败', description: String(err), variant: 'destructive' })
+    } finally {
+      setUploadingField(null)
+    }
+  }
+
   // ── Derive current processing state from episode ───────────
 
   const episode = currentEpisode as EpisodeDetail | null
@@ -680,20 +721,65 @@ export function EpisodeWorkspace() {
                           {char.appearance && (
                             <p className="text-xs text-muted-foreground line-clamp-2">{char.appearance}</p>
                           )}
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="mt-2 h-7 text-xs text-primary hover:text-primary"
-                            onClick={() => handleGenerateCharImage(char.id)}
-                            disabled={generatingCharImg === char.id}
-                          >
-                            {generatingCharImg === char.id ? (
-                              <Loader2 className="size-3 animate-spin" />
-                            ) : (
-                              <Camera className="size-3" />
+                          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs text-primary hover:text-primary"
+                              onClick={() => handleGenerateCharImage(char.id)}
+                              disabled={generatingCharImg === char.id}
+                            >
+                              {generatingCharImg === char.id ? (
+                                <Loader2 className="size-3 animate-spin" />
+                              ) : (
+                                <Camera className="size-3" />
+                              )}
+                              {char.imageUrl ? '重新生成头像' : '生成头像'}
+                            </Button>
+                            {char.appearance && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                                onClick={() => handleCopy(char.appearance!, `char-appearance-${char.id}`)}
+                              >
+                                {copiedField === `char-appearance-${char.id}` ? (
+                                  <Check className="size-3 text-emerald-500" />
+                                ) : (
+                                  <Copy className="size-3" />
+                                )}
+                                复制外貌描述
+                              </Button>
                             )}
-                            {char.imageUrl ? '重新生成头像' : '生成头像'}
-                          </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs text-muted-foreground hover:text-foreground"
+                              disabled={uploadingField === `char-image-${char.id}`}
+                              onClick={() => {
+                                const input = document.getElementById(`upload-char-${char.id}`) as HTMLInputElement
+                                input?.click()
+                              }}
+                            >
+                              {uploadingField === `char-image-${char.id}` ? (
+                                <Loader2 className="size-3 animate-spin" />
+                              ) : (
+                                <Upload className="size-3" />
+                              )}
+                              本地上传头像
+                            </Button>
+                            <input
+                              id={`upload-char-${char.id}`}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                const file = e.target.files?.[0]
+                                if (file) handleUpload(file, { characterId: char.id, fieldType: 'imageUrl' }, `char-image-${char.id}`)
+                                e.target.value = ''
+                              }}
+                            />
+                          </div>
                         </div>
                       </div>
                     </CardContent>
@@ -740,6 +826,21 @@ export function EpisodeWorkspace() {
                           </div>
                           {scene.description && (
                             <p className="text-xs text-muted-foreground line-clamp-2">{scene.description}</p>
+                          )}
+                          {scene.prompt && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="mt-2 h-7 text-xs text-muted-foreground hover:text-foreground"
+                              onClick={() => handleCopy(scene.prompt, `scene-prompt-${scene.id}`)}
+                            >
+                              {copiedField === `scene-prompt-${scene.id}` ? (
+                                <Check className="size-3 text-emerald-500" />
+                              ) : (
+                                <Copy className="size-3" />
+                              )}
+                              复制场景提示词
+                            </Button>
                           )}
                         </div>
                       </div>
@@ -872,10 +973,23 @@ export function EpisodeWorkspace() {
                   {/* Dialogue */}
                   {sb.dialogue && (
                     <div className="ml-12 mb-2 pl-3 border-l-2 border-primary/30">
-                      <p className="text-xs text-muted-foreground italic">
-                        {sb.dialogueChar && <span className="font-medium not-italic text-foreground/80">{sb.dialogueChar}：</span>}
-                        {sb.dialogue}
-                      </p>
+                      <div className="flex items-start gap-1.5">
+                        <p className="text-xs text-muted-foreground italic flex-1">
+                          {sb.dialogueChar && <span className="font-medium not-italic text-foreground/80">{sb.dialogueChar}：</span>}
+                          {sb.dialogue}
+                        </p>
+                        <button
+                          onClick={() => handleCopy(sb.dialogue!, `sb-dialogue-${sb.id}`)}
+                          className="flex-shrink-0 p-0.5 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                          title="复制对白"
+                        >
+                          {copiedField === `sb-dialogue-${sb.id}` ? (
+                            <Check className="size-3 text-emerald-500" />
+                          ) : (
+                            <Copy className="size-3" />
+                          )}
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -889,9 +1003,22 @@ export function EpisodeWorkspace() {
                           图片提示词
                         </CollapsibleTrigger>
                         <CollapsibleContent>
-                          <p className="text-xs text-muted-foreground bg-muted/30 rounded p-2 mt-1">
-                            {sb.imagePrompt}
-                          </p>
+                          <div className="flex items-start gap-1.5 mt-1">
+                            <p className="text-xs text-muted-foreground bg-muted/30 rounded p-2 flex-1">
+                              {sb.imagePrompt}
+                            </p>
+                            <button
+                              onClick={() => handleCopy(sb.imagePrompt!, `sb-img-${sb.id}`)}
+                              className="flex-shrink-0 p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                              title="复制"
+                            >
+                              {copiedField === `sb-img-${sb.id}` ? (
+                                <Check className="size-3 text-emerald-500" />
+                              ) : (
+                                <Copy className="size-3" />
+                              )}
+                            </button>
+                          </div>
                         </CollapsibleContent>
                       </Collapsible>
                     )}
@@ -903,9 +1030,22 @@ export function EpisodeWorkspace() {
                           视频提示词
                         </CollapsibleTrigger>
                         <CollapsibleContent>
-                          <p className="text-xs text-muted-foreground bg-muted/30 rounded p-2 mt-1">
-                            {sb.videoPrompt}
-                          </p>
+                          <div className="flex items-start gap-1.5 mt-1">
+                            <p className="text-xs text-muted-foreground bg-muted/30 rounded p-2 flex-1">
+                              {sb.videoPrompt}
+                            </p>
+                            <button
+                              onClick={() => handleCopy(sb.videoPrompt!, `sb-vid-${sb.id}`)}
+                              className="flex-shrink-0 p-1 rounded hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+                              title="复制"
+                            >
+                              {copiedField === `sb-vid-${sb.id}` ? (
+                                <Check className="size-3 text-emerald-500" />
+                              ) : (
+                                <Copy className="size-3" />
+                              )}
+                            </button>
+                          </div>
                         </CollapsibleContent>
                       </Collapsible>
                     )}

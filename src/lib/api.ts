@@ -22,28 +22,33 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 }
 
 // ============================================================
-// Settings types
+// Provider config types
 // ============================================================
 
-export interface AiSettings {
-  chatModel: string
-  imageModel: string
-  imageProvider: 'nvidia' | 'z-ai-sdk'
-  ttsVoice: string
-  videoQuality: 'speed' | 'quality'
-  videoDuration: number
-  videoFps: number
-  videoSize: string
+export type AiCategory = 'llm' | 'image' | 'video' | 'tts'
+
+export interface ProviderConfig {
+  category: AiCategory
+  provider: string
+  name: string
+  apiKey: string
+  baseUrl: string
+  model: string
+  isActive: boolean
+}
+
+export interface ProviderPreset {
+  provider: string
+  name: string
+  defaultBaseUrl: string
+  defaultModel: string
+  description: string
+  envKey: string
 }
 
 export interface SettingsResponse {
-  settings: AiSettings
-  apiStatus: {
-    nvidiaAvailable: boolean
-    imageProvider: string
-    defaultChatModel: string
-    defaultImageModel: string
-  }
+  providers: Record<AiCategory, ProviderConfig[]>
+  presets: Record<AiCategory, ProviderPreset[]>
 }
 
 // ============================================================
@@ -225,17 +230,17 @@ export const api = {
         body: JSON.stringify({ storyboardId, text, voiceId }),
       }),
 
-    testConnection: () =>
+    testConnection: (category?: AiCategory) =>
       request<{
         success: boolean
+        provider?: string
         model?: string
-        imageProvider?: string
-        nvidiaAvailable: boolean
         error?: string
         responsePreview?: string
       }>('/api/ai/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ category: category || 'llm' }),
       }),
   },
 
@@ -243,11 +248,51 @@ export const api = {
   settings: {
     get: () => request<SettingsResponse>('/api/settings'),
 
-    save: (data: Partial<AiSettings>) =>
-      request<{ settings: AiSettings }>('/api/settings', {
+    save: (data: {
+      category: AiCategory
+      provider: string
+      name?: string
+      apiKey?: string
+      baseUrl?: string
+      model?: string
+      isActive?: boolean
+    }) =>
+      request<{ providers: Record<AiCategory, ProviderConfig[]> }>('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       }),
+  },
+
+  // ---- Upload ----
+  upload: {
+    file: async (
+      file: File,
+      options: {
+        storyboardId?: string
+        characterId?: string
+        sceneId?: string
+        fieldType?: string
+      }
+    ) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      if (options.storyboardId) formData.append('storyboardId', options.storyboardId)
+      if (options.characterId) formData.append('characterId', options.characterId)
+      if (options.sceneId) formData.append('sceneId', options.sceneId)
+      if (options.fieldType) formData.append('fieldType', options.fieldType)
+
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => 'Unknown error')
+        throw new Error(`Upload failed: ${text}`)
+      }
+
+      return res.json() as Promise<{ url: string; storyboard?: Storyboard; character?: Character; scene?: Scene }>
+    },
   },
 }
