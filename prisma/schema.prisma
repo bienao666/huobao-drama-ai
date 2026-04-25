@@ -1,5 +1,3 @@
-// AI Short Drama Creation Platform - Database Schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,16 +9,16 @@ datasource db {
 
 // ============ Drama Project ============
 model Drama {
-  id            String    @id @default(cuid())
+  id            String   @id @default(cuid())
   title         String
-  description   String    @default("")
-  genre         String    @default("都市")   // 都市/古装/悬疑/科幻/甜宠/复仇
-  style         String    @default("realistic") // realistic/anime/3d/watercolor
+  description   String   @default("")
+  genre         String   @default("都市")
+  style         String   @default("realistic")
   coverImage    String?
-  totalEpisodes Int       @default(0)
-  status        String    @default("draft")   // draft/in_progress/completed
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  totalEpisodes Int      @default(0)
+  status        String   @default("draft")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   episodes   Episode[]
   characters Character[]
@@ -33,12 +31,14 @@ model Episode {
   dramaId       String
   episodeNumber Int
   title         String   @default("")
-  rawContent    String?  // Original story/novel text
-  scriptContent String?  // AI-rewritten screenplay
-  scriptStatus  String   @default("pending") // pending/rewriting/done
-  status        String   @default("draft")   // draft/in_production/completed
-  videoUrl      String?  // Final merged video
-  duration      Int      @default(0)        // Duration in seconds
+  rawContent    String?
+  scriptContent String?
+  scriptStatus  String   @default("pending")
+  extractStatus String   @default("pending")
+  storyboardStatus String @default("pending")
+  status        String   @default("draft")
+  videoUrl      String?
+  duration      Int      @default(0)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -53,14 +53,14 @@ model Character {
   id          String   @id @default(cuid())
   dramaId     String
   name        String
-  role        String   @default("supporting") // protagonist/antagonist/supporting/extras
+  role        String   @default("supporting")
   gender      String   @default("unknown")
   age         String   @default("")
-  appearance  String   @default("")  // Visual description for image generation
-  personality String   @default("")  // Personality description
-  voiceStyle  String   @default("")  // TTS voice style
-  voiceId     String?  // Assigned TTS voice ID
-  imageUrl    String?  // Character portrait
+  appearance  String   @default("")
+  personality String   @default("")
+  voiceStyle  String   @default("")
+  voiceId     String?
+  imageUrl    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -71,11 +71,11 @@ model Character {
 model Scene {
   id          String   @id @default(cuid())
   dramaId     String
-  location    String   // Scene location
-  timeOfDay   String   @default("day") // day/night/dawn/dusk
-  description String   @default("")  // Scene description
-  prompt      String   @default("")  // Image generation prompt
-  imageUrl    String?  // Scene reference image
+  location    String
+  timeOfDay   String   @default("day")
+  description String   @default("")
+  prompt      String   @default("")
+  imageUrl    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -84,53 +84,27 @@ model Scene {
 
 // ============ Storyboard (Shot) ============
 model Storyboard {
-  id            String   @id @default(cuid())
-  episodeId     String
-  shotNumber    Int      // Shot sequence number
-  shotType      String   @default("medium") // close-up/medium/wide/extreme-close/full/over-shoulder
-  cameraAngle   String   @default("eye-level") // eye-level/high/low/dutch/birds-eye
-  cameraMovement String  @default("static") // static/pan/tilt/zoom/dolly/tracking
-  action        String   @default("")  // What happens in this shot
-  dialogue      String?  // Character dialogue
-  dialogueChar  String?  // Who speaks
-  duration      Float    @default(3.0) // Shot duration in seconds
-  imagePrompt   String?  // Prompt for image generation
-  videoPrompt   String?  // Prompt for video generation
-  firstFrameUrl String?  // First frame image
-  lastFrameUrl  String?  // Last frame image
-  videoUrl      String?  // Generated video
-  ttsAudioUrl   String?  // TTS audio
-  composedUrl   String?  // Composed video (video + audio + subtitles)
-  status        String   @default("pending") // pending/image_ready/video_ready/audio_ready/composed/done
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(cuid())
+  episodeId      String
+  shotNumber     Int
+  title          String   @default("")
+  shotType       String   @default("medium")
+  cameraAngle    String   @default("eye-level")
+  cameraMovement String   @default("static")
+  action         String   @default("")
+  dialogue       String?
+  dialogueChar   String?
+  duration       Float    @default(3.0)
+  imagePrompt    String?
+  videoPrompt    String?
+  atmosphere     String?
+  firstFrameUrl  String?
+  videoUrl       String?
+  ttsAudioUrl    String?
+  composedUrl    String?
+  status         String   @default("pending")
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
-}
-
-// ============ AI Service Configuration ============
-model AiServiceConfig {
-  id          String   @id @default(cuid())
-  serviceType String   // text/image/video/audio
-  provider    String   // openai/zhipu/minimax/volcengine/alibaba
-  name        String   // Display name
-  baseUrl     String   @default("")
-  apiKey      String   @default("")
-  model       String   @default("")
-  priority    Int      @default(0)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-// ============ AI Voice Catalog ============
-model AiVoice {
-  id         String   @id @default(cuid())
-  voiceId    String
-  voiceName  String
-  provider   String
-  gender     String   @default("unknown")
-  language   String   @default("zh")
-  previewUrl String?
-  createdAt  DateTime @default(now())
 }
