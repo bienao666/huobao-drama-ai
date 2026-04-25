@@ -51,31 +51,20 @@ if (hasPostgres) {
   }
 }
 
-// Generate Prisma client
+// Generate Prisma client - with timeout to prevent hanging
 try {
   console.log('[postinstall] Generating Prisma client...')
   execSync('npx prisma generate', { 
     stdio: 'inherit',
-    env: { ...process.env }
+    env: { ...process.env },
+    timeout: 60000  // 60 second timeout
   })
   console.log('[postinstall] Prisma client generated successfully')
 } catch (error) {
-  console.error('[postinstall] Prisma generate failed:', error.message)
-  // Don't exit with error - let the build continue
-  // The build.js script will also try to generate
+  console.warn('[postinstall] Prisma generate warning:', error.message)
+  // Don't fail - the build.js script will also try
 }
 
-// Push schema to database on Vercel
-if (hasPostgres && process.env.DATABASE_URL) {
-  try {
-    console.log('[postinstall] Pushing schema to PostgreSQL...')
-    execSync('npx prisma db push --accept-data-loss', { 
-      stdio: 'inherit',
-      env: { ...process.env }
-    })
-    console.log('[postinstall] Schema pushed to PostgreSQL successfully')
-  } catch (error) {
-    console.warn('[postinstall] Prisma db push failed (may need manual migration):', error.message)
-    // Don't fail - the build.js script will also try
-  }
-}
+// NOTE: We do NOT run prisma db push in postinstall because it can hang
+// the entire build. Schema push should be done separately or will be
+// attempted in build.js with a timeout.

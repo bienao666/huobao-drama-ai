@@ -13,13 +13,28 @@ const developmentSchemaPath = path.join(__dirname, '..', 'prisma', 'schema.devel
 
 // Check if we have PostgreSQL env vars (Vercel Postgres)
 function getPostgresUrl() {
+  // Prioritize non-pooling URL for schema pushes (DDL operations)
   return (
     process.env.DATABASE_URL ||
-    process.env.POSTGRES_PRISMA_URL ||
     process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.POSTGRES_URL ||
-    process.env.huobao_POSTGRES_PRISMA_URL ||
     process.env.huobao_POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.huobao_POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.huobao_POSTGRES_URL ||
+    null
+  )
+}
+
+// Get the best URL for prisma db push (needs non-pooling for DDL)
+function getPushUrl() {
+  return (
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.huobao_POSTGRES_URL_NON_POOLING ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.huobao_POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL ||
     process.env.huobao_POSTGRES_URL ||
     null
   )
@@ -55,18 +70,29 @@ if (hasPostgres) {
     console.log('[build] Generating Prisma client...')
     execSync('npx prisma generate', { 
       stdio: 'inherit',
-      env: { ...process.env }
+      env: { ...process.env },
+      timeout: 60000
     })
     console.log('[build] Prisma client generated successfully')
-    
-    console.log('[build] Pushing schema to PostgreSQL...')
-    execSync('npx prisma db push --accept-data-loss', { 
+  } catch (error) {
+    console.warn('[build] Prisma generate warning:', error.message)
+  }
+  
+  // Try to push schema to PostgreSQL - with timeout
+  // Use non-pooling URL for DDL operations
+  const pushUrl = getPushUrl()
+  const pushEnv = { ...process.env, DATABASE_URL: pushUrl || pgUrl }
+  
+  try {
+    console.log('[build] Pushing schema to PostgreSQL (30s timeout)...')
+    execSync('npx prisma db push --accept-data-loss --skip-generate', { 
       stdio: 'inherit',
-      env: { ...process.env }
+      env: pushEnv,
+      timeout: 30000
     })
     console.log('[build] Schema pushed to PostgreSQL successfully')
   } catch (error) {
-    console.warn('[build] Prisma setup warning:', error.message)
+    console.warn('[build] Prisma db push warning (schema may already exist):', error.message?.slice(0, 200))
     // Don't fail the build - the schema might already be pushed
   }
 } else {
@@ -85,7 +111,8 @@ if (hasPostgres) {
   try {
     execSync('npx prisma generate', { 
       stdio: 'inherit',
-      env: { ...process.env }
+      env: { ...process.env },
+      timeout: 60000
     })
   } catch (error) {
     console.warn('[build] Prisma generate warning:', error.message)
