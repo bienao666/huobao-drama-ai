@@ -219,19 +219,26 @@ export async function getActiveProvider(category: AiCategory): Promise<ProviderC
     orderBy: { sort: 'asc' },
   })
 
-  if (dbProvider && dbProvider.apiKey) {
-    return {
-      category,
-      provider: dbProvider.provider,
-      name: dbProvider.name,
-      apiKey: dbProvider.apiKey,
-      baseUrl: dbProvider.baseUrl,
-      model: dbProvider.model,
-      isActive: true,
+  // Check if the provider is explicitly set as active in DB
+  // Some providers (like z-ai-sdk) don't need an API key
+  const noKeyProviders = ['z-ai-sdk']
+
+  if (dbProvider) {
+    // If the provider needs no API key, or has one configured, use it
+    if (noKeyProviders.includes(dbProvider.provider) || dbProvider.apiKey) {
+      return {
+        category,
+        provider: dbProvider.provider,
+        name: dbProvider.name,
+        apiKey: dbProvider.apiKey || '',
+        baseUrl: dbProvider.baseUrl,
+        model: dbProvider.model,
+        isActive: true,
+      }
     }
   }
 
-  // Fallback: check env vars
+  // Fallback: check env vars (only for providers that have env keys)
   const presets = PROVIDER_PRESETS[category]
   for (const preset of presets) {
     if (preset.envKey && process.env[preset.envKey]) {
