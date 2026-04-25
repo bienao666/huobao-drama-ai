@@ -6,32 +6,48 @@ import { PrismaClient } from '@prisma/client'
 // ============================================================
 
 function resolveDatabaseUrl(): string {
-  // 1. If DATABASE_URL is explicitly set and non-empty, use it
+  // 1. Check Vercel Postgres non-pooling URL FIRST (best for Prisma)
+  // Non-pooling URL is where prisma db push creates tables
+  // and provides the most reliable Prisma Client experience
+  const nonPoolingUrl =
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.huobao_POSTGRES_URL_NON_POOLING
+
+  if (nonPoolingUrl) {
+    console.log('[db] Using non-pooling PostgreSQL URL for best Prisma compatibility')
+    process.env.DATABASE_URL = nonPoolingUrl
+    return nonPoolingUrl
+  }
+
+  // 2. Check Prisma-specific pooled URLs (second best option)
+  const prismaUrl =
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.huobao_POSTGRES_PRISMA_URL
+
+  if (prismaUrl) {
+    console.log('[db] Using Prisma-specific pooled URL')
+    process.env.DATABASE_URL = prismaUrl
+    return prismaUrl
+  }
+
+  // 3. If DATABASE_URL is explicitly set and non-empty, use it
   if (process.env.DATABASE_URL && process.env.DATABASE_URL.trim() !== '') {
     console.log('[db] Using DATABASE_URL from environment')
     return process.env.DATABASE_URL
   }
 
-  // 2. Check Vercel Postgres env vars (both standard and prefixed)
-  // Priority: non-pooling URL for better Prisma compatibility,
-  // then Prisma-specific URL, then generic Postgres URL
-  const vercelPostgresUrl =
-    process.env.POSTGRES_URL_NON_POOLING ||
-    process.env.huobao_POSTGRES_URL_NON_POOLING ||
-    process.env.POSTGRES_PRISMA_URL ||
-    process.env.huobao_POSTGRES_PRISMA_URL ||
+  // 4. Check generic Postgres URLs
+  const genericUrl =
     process.env.POSTGRES_URL ||
     process.env.huobao_POSTGRES_URL
 
-  if (vercelPostgresUrl) {
-    console.log('[db] Using Vercel Postgres URL from integration env vars')
-    // CRITICAL: Set DATABASE_URL in process.env so that Prisma's
-    // schema.prisma `url = env("DATABASE_URL")` resolves correctly.
-    process.env.DATABASE_URL = vercelPostgresUrl
-    return vercelPostgresUrl
+  if (genericUrl) {
+    console.log('[db] Using generic Postgres URL from integration env vars')
+    process.env.DATABASE_URL = genericUrl
+    return genericUrl
   }
 
-  // 3. Try to construct from individual Supabase/Neon components
+  // 5. Try to construct from individual Supabase/Neon components
   const host = process.env.huobao_POSTGRES_HOST || process.env.POSTGRES_HOST
   const user = process.env.huobao_POSTGRES_USER || process.env.POSTGRES_USER
   const password = process.env.huobao_POSTGRES_PASSWORD || process.env.POSTGRES_PASSWORD
@@ -44,7 +60,7 @@ function resolveDatabaseUrl(): string {
     return constructedUrl
   }
 
-  // 4. Fallback for local development (SQLite)
+  // 6. Fallback for local development (SQLite)
   console.log('[db] No PostgreSQL URL found, falling back to SQLite')
   return 'file:./db/custom.db'
 }
@@ -63,7 +79,7 @@ const globalForPrisma = globalThis as unknown as {
 const maskedUrl = databaseUrl
   .replace(/\/\/[^:]+:[^@]+@/, '//***:***@')
   .replace(/\?[^#]+/, '?***')
-console.log(`[db] Connecting to database: ${maskedUrl.slice(0, 80)}...`)
+console.log(`[db] Connecting to database: ${maskedUrl.slice(0, 100)}...`)
 
 export const db =
   globalForPrisma.prisma ??
