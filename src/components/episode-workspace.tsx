@@ -2095,7 +2095,7 @@ export function EpisodeWorkspace() {
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-3 border-b border-border/50 flex-wrap gap-2">
           <div className="flex items-center gap-3">
-            <span className="text-xs font-mono text-primary/80">05</span>
+            <span className="text-xs font-mono text-primary/80">06</span>
             <div>
               <h2 className="text-sm font-semibold">后期制作</h2>
               <p className="text-[10px] text-muted-foreground">配音 · 合成（字幕+配音） · 预览 · 导出</p>
