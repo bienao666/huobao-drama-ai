@@ -8,6 +8,10 @@ const { execSync } = require('child_process')
 const fs = require('fs')
 const path = require('path')
 
+function isPostgresUrl(url) {
+  return url && (url.startsWith('postgresql://') || url.startsWith('postgres://'))
+}
+
 // Resolve the best PostgreSQL URL for Prisma (with huobao_ prefix priority)
 const huobaoNonPooling = process.env.huobao_POSTGRES_URL_NON_POOLING
 const huobaoPrisma = process.env.huobao_POSTGRES_PRISMA_URL
@@ -18,42 +22,51 @@ const genericUrl = process.env.POSTGRES_URL
 
 // DATABASE_URL: used by Prisma Client at runtime (pooled connection for serverless)
 // DIRECT_URL: used by Prisma for migrations (direct connection)
-const runtimeUrl = huobaoPrisma || prismaUrl || huobaoGeneric || genericUrl || huobaoNonPooling || nonPoolingUrl || process.env.DATABASE_URL
-const migrationUrl = huobaoNonPooling || nonPoolingUrl || huobaoGeneric || genericUrl || process.env.DIRECT_URL || process.env.DATABASE_URL
+const runtimeUrl = huobaoPrisma || prismaUrl || huobaoNonPooling || nonPoolingUrl || huobaoGeneric || genericUrl || process.env.DATABASE_URL
+const migrationUrl = huobaoNonPooling || nonPoolingUrl || huobaoGeneric || genericUrl || process.env.DIRECT_URL || runtimeUrl
 
-const hasPostgres = !!(runtimeUrl && isPostgresUrl(runtimeUrl))
-
-function isPostgresUrl(url) {
-  return url && (url.startsWith('postgresql://') || url.startsWith('postgres://'))
-}
+const hasPostgres = !!runtimeUrl && isPostgresUrl(runtimeUrl)
 
 if (hasPostgres) {
   // PostgreSQL mode (Vercel production)
-  console.log('[build] PostgreSQL detected - generating client for PostgreSQL')
-  process.env.DATABASE_URL = runtimeUrl
-  process.env.DIRECT_URL = migrationUrl
+  console.log('[build] PostgreSQL detected - ensuring schema uses PostgreSQL provider')
 
-  // Ensure schema uses postgresql provider
+  // Ensure schema uses postgresql provider (in case postinstall didn't run or didn't switch)
   const schemaPath = path.join(__dirname, '..', 'prisma', 'schema.prisma')
-  let schema = fs.readFileSync(schemaPath, 'utf8')
-  if (schema.includes('provider = "sqlite"')) {
-    schema = schema.replace('provider = "sqlite"', 'provider = "postgresql"')
+  try {
+    let schema = fs.readFileSync(schemaPath, 'utf8')
+    let modified = false
+
+    if (schema.includes('provider = "sqlite"')) {
+      schema = schema.replace('provider = "sqlite"', 'provider = "postgresql"')
+      modified = true
+    }
+
     if (!schema.includes('directUrl')) {
       schema = schema.replace(
-        /url\s*=\s*env\("DATABASE_URL"\)/,
-        'url               = env("DATABASE_URL")\n  directUrl         = env("DIRECT_URL")'
+        /url\s*=\s*env\("DATABASE_URL"\)\s*\n(\s*)relationMode/,
+        'url               = env("DATABASE_URL")\n$1directUrl         = env("DIRECT_URL")\n$1relationMode'
       )
+      modified = true
     }
-    fs.writeFileSync(schemaPath, schema)
-    console.log('[build] Switched schema from SQLite to PostgreSQL')
+
+    if (modified) {
+      fs.writeFileSync(schemaPath, schema)
+      console.log('[build] Switched schema to PostgreSQL with directUrl')
+    } else {
+      console.log('[build] Schema already configured for PostgreSQL')
+    }
+  } catch (err) {
+    console.warn('[build] Could not modify schema:', err.message)
   }
+
+  process.env.DATABASE_URL = runtimeUrl
+  process.env.DIRECT_URL = migrationUrl
 } else {
   console.log('[build] No PostgreSQL URL found - using SQLite for local development')
-  // For local SQLite, we keep the schema as-is if it's already postgresql
-  // Prisma generate works with any provider as long as the schema is valid
 }
 
-// Generate Prisma client
+// Generate Prisma client (always regenerate to ensure correct provider)
 try {
   console.log('[build] Generating Prisma client...')
   const generateEnv = hasPostgres

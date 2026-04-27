@@ -1,7 +1,7 @@
 // ============================================================
-// Postinstall script: generates Prisma client
-// On Vercel: uses huobao_POSTGRES_* env vars to switch to PostgreSQL
-// Locally: uses SQLite (default)
+// Postinstall script: prepares for build
+// On Vercel (has PostgreSQL env vars): switches schema to PostgreSQL
+// Locally (no PostgreSQL): keeps SQLite
 // ============================================================
 
 const { execSync } = require('child_process')
@@ -28,31 +28,41 @@ if (hasPostgres) {
   try {
     let schema = fs.readFileSync(schemaPath, 'utf8')
     if (schema.includes('provider = "sqlite"')) {
+      // Replace sqlite with postgresql and add directUrl
       schema = schema.replace('provider = "sqlite"', 'provider = "postgresql"')
+      // Add directUrl if not present
       if (!schema.includes('directUrl')) {
         schema = schema.replace(
-          /url\s*=\s*env\("DATABASE_URL"\)\s*\n\s*relationMode/,
-          'url               = env("DATABASE_URL")\n  directUrl         = env("DIRECT_URL")\n  relationMode'
+          /url\s*=\s*env\("DATABASE_URL"\)\s*\n(\s*)relationMode/,
+          'url               = env("DATABASE_URL")\n$1directUrl         = env("DIRECT_URL")\n$1relationMode'
         )
       }
       fs.writeFileSync(schemaPath, schema)
       console.log('[postinstall] Switched schema from SQLite to PostgreSQL')
+    } else {
+      console.log('[postinstall] Schema already uses PostgreSQL')
     }
   } catch (err) {
     console.warn('[postinstall] Could not switch schema:', err.message)
   }
 
-  // Resolve PostgreSQL URL
+  // Resolve PostgreSQL URL for prisma generate
   const runtimeUrl =
     process.env.huobao_POSTGRES_PRISMA_URL ||
     process.env.POSTGRES_PRISMA_URL ||
-    process.env.huobao_POSTGRES_URL ||
-    process.env.POSTGRES_URL ||
     process.env.huobao_POSTGRES_URL_NON_POOLING ||
-    process.env.POSTGRES_URL_NON_POOLING
+    process.env.POSTGRES_URL_NON_POOLING ||
+    process.env.huobao_POSTGRES_URL ||
+    process.env.POSTGRES_URL
+
+  const directUrl =
+    process.env.huobao_POSTGRES_URL_NON_POOLING ||
+    process.env.POSTGRES_URL_NON_POOLING ||
+    runtimeUrl
 
   process.env.DATABASE_URL = runtimeUrl
-  process.env.DIRECT_URL = process.env.huobao_POSTGRES_URL_NON_POOLING || process.env.POSTGRES_URL_NON_POOLING || runtimeUrl
+  process.env.DIRECT_URL = directUrl
+  console.log('[postinstall] PostgreSQL URLs configured for Prisma')
 }
 
 // Generate Prisma client - with timeout to prevent hanging
