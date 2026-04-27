@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { getDbProvider } from '@/lib/db'
 
 // GET /api/health - Diagnostic endpoint to check database connectivity
 export async function GET() {
@@ -7,15 +8,15 @@ export async function GET() {
     nodeEnv: process.env.NODE_ENV,
   }
 
-  // Check DATABASE_URL resolution - detailed debugging
+  // Detect database provider
+  const dbProvider = getDbProvider()
+  diagnostics.dbProvider = dbProvider
+
+  // Check DATABASE_URL resolution
   const dbUrl = process.env.DATABASE_URL
   diagnostics.databaseUrlSet = !!dbUrl
   diagnostics.databaseUrlLength = dbUrl ? dbUrl.length : 0
-  diagnostics.databaseUrlProvider = dbUrl
-    ? dbUrl.startsWith('postgres') ? 'postgresql' : 'unknown'
-    : 'NOT SET'
 
-  // Mask the URL for security
   if (dbUrl) {
     diagnostics.databaseUrlMasked = dbUrl
       .replace(/\/\/[^:]+:[^@]+@/, '//***:***@')
@@ -23,7 +24,7 @@ export async function GET() {
       .slice(0, 100)
   }
 
-  // Check available Vercel Postgres env vars WITH VALUES AND LENGTHS
+  // Check available Vercel Postgres env vars (with huobao_ prefix)
   const pgVarNames = [
     'POSTGRES_URL',
     'POSTGRES_PRISMA_URL',
@@ -41,7 +42,6 @@ export async function GET() {
   for (const name of pgVarNames) {
     const val = process.env[name]
     if (val) {
-      // Show masked value and length for debugging
       const masked = val
         .replace(/\/\/[^:]+:[^@]+@/, '//***:***@')
         .replace(/\?[^#]+/, '?***')
@@ -64,33 +64,6 @@ export async function GET() {
     FISH_AUDIO_API_KEY: !!process.env.FISH_AUDIO_API_KEY,
   }
 
-  // Check what resolveDatabaseUrl() would return
-  try {
-    // Simulate the resolveDatabaseUrl logic
-    const nonPoolingUrl =
-      process.env.POSTGRES_URL_NON_POOLING ||
-      process.env.huobao_POSTGRES_URL_NON_POOLING
-    const prismaUrl =
-      process.env.POSTGRES_PRISMA_URL ||
-      process.env.huobao_POSTGRES_PRISMA_URL
-    const genericUrl =
-      process.env.POSTGRES_URL ||
-      process.env.huobao_POSTGRES_URL
-
-    diagnostics.urlResolution = {
-      nonPoolingUrl: nonPoolingUrl ? `found (length: ${nonPoolingUrl.length})` : 'not found',
-      prismaUrl: prismaUrl ? `found (length: ${prismaUrl.length})` : 'not found',
-      databaseUrl: dbUrl ? `found (length: ${dbUrl.length})` : 'not found',
-      genericUrl: genericUrl ? `found (length: ${genericUrl.length})` : 'not found',
-      resolvedProvider: nonPoolingUrl ? 'non-pooling' :
-        prismaUrl ? 'prisma-pooled' :
-        dbUrl ? 'database-url' :
-        genericUrl ? 'generic' : 'no-url-found',
-    }
-  } catch (err) {
-    diagnostics.urlResolution = `error: ${err instanceof Error ? err.message : String(err)}`
-  }
-
   // Test actual database connection
   try {
     const { db } = await import('@/lib/db')
@@ -110,17 +83,6 @@ export async function GET() {
   } catch (error) {
     diagnostics.dramaModel = 'FAILED'
     diagnostics.dramaModelError = error instanceof Error ? error.message : String(error)
-  }
-
-  // Test AiProvider model
-  try {
-    const { db } = await import('@/lib/db')
-    const count = await db.aiProvider.count()
-    diagnostics.aiProviderCount = count
-    diagnostics.aiProviderModel = 'OK'
-  } catch (error) {
-    diagnostics.aiProviderModel = 'FAILED'
-    diagnostics.aiProviderModelError = error instanceof Error ? error.message : String(error)
   }
 
   const isHealthy = diagnostics.databaseConnection === 'OK' && diagnostics.dramaModel === 'OK'
