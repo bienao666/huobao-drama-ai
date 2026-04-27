@@ -14,6 +14,12 @@ import { db } from '@/lib/db'
 
 export type AiCategory = 'llm' | 'image' | 'video' | 'tts'
 
+export interface ModelOption {
+  id: string       // Model identifier used in API calls
+  name: string     // Display name
+  tags?: string[]  // Tags like '推荐', '免费', '快速', '最新'
+}
+
 export interface ProviderPreset {
   provider: string
   name: string
@@ -21,6 +27,7 @@ export interface ProviderPreset {
   defaultModel: string
   description: string
   envKey: string // env var name for API key fallback
+  availableModels?: ModelOption[] // Selectable models for this provider
 }
 
 export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
@@ -29,9 +36,42 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       provider: 'nvidia',
       name: 'NVIDIA NIM',
       defaultBaseUrl: 'https://integrate.api.nvidia.com/v1',
-      defaultModel: 'meta/llama-3.1-70b-instruct',
-      description: 'NVIDIA NIM API — Llama 3.1, Mixtral, Nemotron',
+      defaultModel: 'z-ai/glm-5.1',
+      description: 'NVIDIA NIM API — GLM5.1, DeepSeek V4, MiniMax, Llama, Qwen 等 70+ 模型',
       envKey: 'NVIDIA_API_KEY',
+      availableModels: [
+        { id: 'z-ai/glm-5.1', name: 'GLM-5.1', tags: ['推荐', '最新'] },
+        { id: 'z-ai/glm5', name: 'GLM-5' },
+        { id: 'z-ai/glm4.7', name: 'GLM-4.7' },
+        { id: 'deepseek-ai/deepseek-v4-pro', name: 'DeepSeek V4 Pro', tags: ['推荐', '最新'] },
+        { id: 'deepseek-ai/deepseek-v4-flash', name: 'DeepSeek V4 Flash', tags: ['快速'] },
+        { id: 'deepseek-ai/deepseek-v3.2', name: 'DeepSeek V3.2' },
+        { id: 'deepseek-ai/deepseek-v3.1-terminus', name: 'DeepSeek V3.1 Terminus' },
+        { id: 'minimaxai/minimax-m2.7', name: 'MiniMax M2.7', tags: ['最新'] },
+        { id: 'minimaxai/minimax-m2.5', name: 'MiniMax M2.5' },
+        { id: 'qwen/qwen3.5-397b-a17b', name: 'Qwen 3.5 397B', tags: ['推荐', '最新'] },
+        { id: 'qwen/qwen3.5-122b-a10b', name: 'Qwen 3.5 122B' },
+        { id: 'qwen/qwen3-next-80b-a3b-instruct', name: 'Qwen 3 Next 80B' },
+        { id: 'qwen/qwen3-next-80b-a3b-thinking', name: 'Qwen 3 Next Thinking 80B', tags: ['推理'] },
+        { id: 'moonshotai/kimi-k2.5', name: 'Kimi K2.5', tags: ['最新'] },
+        { id: 'moonshotai/kimi-k2-instruct', name: 'Kimi K2' },
+        { id: 'moonshotai/kimi-k2-thinking', name: 'Kimi K2 Thinking', tags: ['推理'] },
+        { id: 'meta/llama-4-maverick-17b-128e-instruct', name: 'Llama 4 Maverick', tags: ['最新'] },
+        { id: 'meta/llama-3.3-70b-instruct', name: 'Llama 3.3 70B' },
+        { id: 'meta/llama-3.1-405b-instruct', name: 'Llama 3.1 405B' },
+        { id: 'meta/llama-3.1-70b-instruct', name: 'Llama 3.1 70B' },
+        { id: 'meta/llama-3.1-8b-instruct', name: 'Llama 3.1 8B', tags: ['快速'] },
+        { id: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', name: 'Nemotron Ultra 253B', tags: ['推荐'] },
+        { id: 'nvidia/llama-3.1-nemotron-70b-instruct', name: 'Nemotron 70B' },
+        { id: 'nvidia/llama-3.3-nemotron-super-49b-v1.5', name: 'Nemotron Super 49B v1.5' },
+        { id: 'mistralai/mistral-large-3-675b-instruct-2512', name: 'Mistral Large 3 675B', tags: ['最新'] },
+        { id: 'mistralai/mistral-medium-3-instruct', name: 'Mistral Medium 3' },
+        { id: 'mistralai/mistral-small-4-119b-2603', name: 'Mistral Small 4' },
+        { id: 'mistralai/mixtral-8x22b-instruct-v0.1', name: 'Mixtral 8x22B' },
+        { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B' },
+        { id: '01-ai/yi-large', name: 'Yi Large' },
+        { id: 'bytedance/seed-oss-36b-instruct', name: 'Seed OSS 36B' },
+      ],
     },
     {
       provider: 'openai',
@@ -40,6 +80,15 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       defaultModel: 'gpt-4o',
       description: 'OpenAI GPT-4o / GPT-4o-mini',
       envKey: 'OPENAI_API_KEY',
+      availableModels: [
+        { id: 'gpt-4o', name: 'GPT-4o', tags: ['推荐'] },
+        { id: 'gpt-4o-mini', name: 'GPT-4o Mini', tags: ['快速', '经济'] },
+        { id: 'gpt-4.1', name: 'GPT-4.1', tags: ['最新'] },
+        { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', tags: ['快速'] },
+        { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', tags: ['经济'] },
+        { id: 'o3', name: 'o3', tags: ['推理'] },
+        { id: 'o4-mini', name: 'o4-mini', tags: ['推理', '经济'] },
+      ],
     },
     {
       provider: 'siliconflow',
@@ -48,6 +97,14 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       defaultModel: 'deepseek-ai/DeepSeek-V3',
       description: 'SiliconFlow — DeepSeek, Qwen, Llama',
       envKey: 'SILICONFLOW_API_KEY',
+      availableModels: [
+        { id: 'deepseek-ai/DeepSeek-V3', name: 'DeepSeek V3', tags: ['推荐'] },
+        { id: 'deepseek-ai/DeepSeek-R1', name: 'DeepSeek R1', tags: ['推理'] },
+        { id: 'Qwen/Qwen2.5-72B-Instruct', name: 'Qwen 2.5 72B' },
+        { id: 'Qwen/Qwen2.5-32B-Instruct', name: 'Qwen 2.5 32B' },
+        { id: 'meta-llama/Meta-Llama-3.1-70B-Instruct', name: 'Llama 3.1 70B' },
+        { id: 'meta-llama/Meta-Llama-3.1-8B-Instruct', name: 'Llama 3.1 8B', tags: ['快速'] },
+      ],
     },
     {
       provider: 'deepseek',
@@ -56,6 +113,10 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       defaultModel: 'deepseek-chat',
       description: 'DeepSeek official API',
       envKey: 'DEEPSEEK_API_KEY',
+      availableModels: [
+        { id: 'deepseek-chat', name: 'DeepSeek Chat', tags: ['推荐'] },
+        { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', tags: ['推理'] },
+      ],
     },
     {
       provider: 'custom',
@@ -74,6 +135,13 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       defaultModel: 'stabilityai/stable-diffusion-xl-base-1.0',
       description: 'SiliconFlow — SDXL, FLUX 等（推荐，国内可用）',
       envKey: 'SILICONFLOW_API_KEY',
+      availableModels: [
+        { id: 'stabilityai/stable-diffusion-xl-base-1.0', name: 'SDXL Base 1.0', tags: ['推荐'] },
+        { id: 'black-forest-labs/FLUX.1-schnell', name: 'FLUX.1 Schnell', tags: ['快速'] },
+        { id: 'black-forest-labs/FLUX.1-dev', name: 'FLUX.1 Dev' },
+        { id: 'stabilityai/stable-diffusion-3-5-large', name: 'SD 3.5 Large' },
+        { id: 'stabilityai/stable-diffusion-3-medium', name: 'SD 3 Medium' },
+      ],
     },
     {
       provider: 'openai',
@@ -82,6 +150,10 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       defaultModel: 'dall-e-3',
       description: 'OpenAI DALL·E 3 图片生成',
       envKey: 'OPENAI_API_KEY',
+      availableModels: [
+        { id: 'dall-e-3', name: 'DALL·E 3', tags: ['推荐'] },
+        { id: 'gpt-image-1', name: 'GPT Image 1', tags: ['最新'] },
+      ],
     },
     {
       provider: 'stability',
@@ -90,14 +162,25 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       defaultModel: 'stable-diffusion-xl-1024-v1-0',
       description: 'Stability AI 官方 API',
       envKey: 'STABILITY_API_KEY',
+      availableModels: [
+        { id: 'stable-diffusion-xl-1024-v1-0', name: 'SDXL 1.0 1024', tags: ['推荐'] },
+        { id: 'stable-diffusion-3-5-large', name: 'SD 3.5 Large' },
+        { id: 'stable-diffusion-3-medium', name: 'SD 3 Medium' },
+        { id: 'stable-image-core', name: 'Stable Image Core' },
+      ],
     },
     {
       provider: 'nvidia',
-      name: 'NVIDIA SDXL',
-      defaultBaseUrl: 'https://ai.api.nvidia.com/v1/genai/stabilityai/stable-diffusion-xl',
+      name: 'NVIDIA Image',
+      defaultBaseUrl: 'https://integrate.api.nvidia.com/v1',
       defaultModel: 'stabilityai/stable-diffusion-xl',
-      description: 'NVIDIA Stable Diffusion XL（可能不可用）',
+      description: 'NVIDIA NIM 图片生成（SDXL、Stable Diffusion 等）',
       envKey: 'NVIDIA_API_KEY',
+      availableModels: [
+        { id: 'stabilityai/stable-diffusion-xl', name: 'SDXL (NIM)', tags: ['推荐'] },
+        { id: 'stabilityai/stable-diffusion-3-medium', name: 'SD 3 Medium (NIM)' },
+        { id: 'stabilityai/stable-diffusion-3-large', name: 'SD 3 Large (NIM)' },
+      ],
     },
     {
       provider: 'z-ai-sdk',
@@ -121,9 +204,13 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       provider: 'siliconflow',
       name: 'SiliconFlow Video',
       defaultBaseUrl: 'https://api.siliconflow.cn/v1',
-      defaultModel: '',
+      defaultModel: 'ali-video/video-01',
       description: 'SiliconFlow 视频生成（推荐，国内可用）',
       envKey: 'SILICONFLOW_API_KEY',
+      availableModels: [
+        { id: 'ali-video/video-01', name: 'Ali Video 01', tags: ['推荐'] },
+        { id: 'tencent-video/hunyuan-video', name: 'Hunyuan Video' },
+      ],
     },
     {
       provider: 'seedance',
@@ -132,6 +219,10 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       defaultModel: 'bytedance-seedance/seedance-2.0-pro-250428',
       description: 'Seedance 2.0 视频生成（字节跳动，支持图生视频）',
       envKey: 'SILICONFLOW_API_KEY',
+      availableModels: [
+        { id: 'bytedance-seedance/seedance-2.0-pro-250428', name: 'Seedance 2.0 Pro', tags: ['推荐'] },
+        { id: 'bytedance-seedance/seedance-2.0-lite-250428', name: 'Seedance 2.0 Lite', tags: ['快速'] },
+      ],
     },
     {
       provider: 'volcengine',
@@ -166,6 +257,11 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       defaultModel: 'tts-1',
       description: 'OpenAI Text-to-Speech（推荐）',
       envKey: 'OPENAI_API_KEY',
+      availableModels: [
+        { id: 'tts-1', name: 'TTS-1', tags: ['推荐'] },
+        { id: 'tts-1-hd', name: 'TTS-1 HD', tags: ['高清'] },
+        { id: 'gpt-4o-mini-tts', name: 'GPT-4o Mini TTS', tags: ['最新'] },
+      ],
     },
     {
       provider: 'fish-audio',
@@ -174,6 +270,17 @@ export const PROVIDER_PRESETS: Record<AiCategory, ProviderPreset[]> = {
       defaultModel: 'tts-1',
       description: 'Fish Audio 语音合成',
       envKey: 'FISH_AUDIO_API_KEY',
+    },
+    {
+      provider: 'nvidia',
+      name: 'NVIDIA Riva TTS',
+      defaultBaseUrl: 'https://integrate.api.nvidia.com/v1',
+      defaultModel: 'nvidia/riva-tts',
+      description: 'NVIDIA Riva 语音合成（支持多语言）',
+      envKey: 'NVIDIA_API_KEY',
+      availableModels: [
+        { id: 'nvidia/riva-tts', name: 'Riva TTS', tags: ['推荐'] },
+      ],
     },
     {
       provider: 'volcengine',
@@ -498,24 +605,26 @@ export const aiClient = {
     provider: ProviderConfig,
     options?: { width?: number; height?: number; size?: string }
   ): Promise<string> {
-    const text_prompts: Array<{ text: string; weight: number }> = [
-      { text: prompt, weight: 1 },
-    ]
+    // Try OpenAI-compatible image generation endpoint first
+    // NVIDIA NIM now supports /v1/images/generations for some models
+    const baseUrl = provider.baseUrl.replace(/\/$/, '')
+
+    // Try the OpenAI-compatible endpoint
+    const url = `${baseUrl}/images/generations`
+    const sizeStr = options?.size ?? '1024x1024'
+
+    const body: Record<string, unknown> = {
+      model: provider.model || 'stabilityai/stable-diffusion-xl',
+      prompt,
+      n: 1,
+      size: sizeStr,
+      response_format: 'b64_json',
+    }
     if (negativePrompt) {
-      text_prompts.push({ text: negativePrompt, weight: -1 })
+      body.negative_prompt = negativePrompt
     }
 
-    const body = {
-      text_prompts,
-      cfg_scale: 7,
-      height: options?.height ?? 1024,
-      width: options?.width ?? 1024,
-      steps: 50,
-      sampler: 'K_DPMPP_2M',
-      seed: 0,
-    }
-
-    const res = await fetch(provider.baseUrl, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${provider.apiKey}`,
@@ -524,16 +633,60 @@ export const aiClient = {
       body: JSON.stringify(body),
     })
 
-    if (!res.ok) {
-      const text = await res.text().catch(() => 'Unknown error')
-      throw new Error(`NVIDIA Image API error (${res.status}): ${text.slice(0, 300)}`)
+    if (res.ok) {
+      const data = await res.json()
+      const b64 = data.data?.[0]?.b64_json
+      if (b64) return b64
+
+      const imgUrl = data.data?.[0]?.url
+      if (imgUrl) {
+        const imgRes = await fetch(imgUrl)
+        const buffer = Buffer.from(await imgRes.arrayBuffer())
+        return buffer.toString('base64')
+      }
+
+      // Some NVIDIA models return { art: "base64..." }
+      if (data.art) return data.art
+
+      throw new Error('NVIDIA image generation returned no data')
     }
 
-    const data = await res.json()
-    if (!data.art) {
+    // Fallback: try the legacy SDXL-specific endpoint format
+    const legacyUrl = `https://ai.api.nvidia.com/v1/genai/${provider.model || 'stabilityai/stable-diffusion-xl'}`
+    const text_prompts: Array<{ text: string; weight: number }> = [
+      { text: prompt, weight: 1 },
+    ]
+    if (negativePrompt) {
+      text_prompts.push({ text: negativePrompt, weight: -1 })
+    }
+
+    const legacyRes = await fetch(legacyUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${provider.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        text_prompts,
+        cfg_scale: 7,
+        height: options?.height ?? 1024,
+        width: options?.width ?? 1024,
+        steps: 50,
+        sampler: 'K_DPMPP_2M',
+        seed: 0,
+      }),
+    })
+
+    if (!legacyRes.ok) {
+      const text = await legacyRes.text().catch(() => 'Unknown error')
+      throw new Error(`NVIDIA Image API error (${legacyRes.status}): ${text.slice(0, 300)}`)
+    }
+
+    const legacyData = await legacyRes.json()
+    if (!legacyData.art) {
       throw new Error('NVIDIA image generation returned empty result')
     }
-    return data.art
+    return legacyData.art
   },
 
   async _generateImageOpenAI(
@@ -959,6 +1112,8 @@ export const aiClient = {
         audioDataUrl = await this._generateTtsOpenAI(text, voiceId, provider)
       } else if (provider.provider === 'fish-audio') {
         audioDataUrl = await this._generateTtsFishAudio(text, voiceId, provider)
+      } else if (provider.provider === 'nvidia') {
+        audioDataUrl = await this._generateTtsNvidia(text, voiceId, provider)
       } else {
         audioDataUrl = await this._generateTtsZai(text, voiceId)
       }
@@ -1048,6 +1203,39 @@ export const aiClient = {
     if (!res.ok) {
       const errText = await res.text().catch(() => '')
       throw new Error(`Fish Audio TTS API error (${res.status}): ${errText.slice(0, 300)}`)
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer())
+    const base64Audio = buffer.toString('base64')
+    return `data:audio/wav;base64,${base64Audio}`
+  },
+
+  async _generateTtsNvidia(
+    text: string,
+    voiceId: string | undefined,
+    provider: ProviderConfig
+  ): Promise<string> {
+    // NVIDIA Riva TTS uses OpenAI-compatible /audio/speech endpoint
+    const baseUrl = provider.baseUrl.replace(/\/$/, '')
+    const url = `${baseUrl}/audio/speech`
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${provider.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: provider.model || 'nvidia/riva-tts',
+        input: text,
+        voice: voiceId || 'default',
+        response_format: 'wav',
+      }),
+    })
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '')
+      throw new Error(`NVIDIA Riva TTS API error (${res.status}): ${errText.slice(0, 300)}`)
     }
 
     const buffer = Buffer.from(await res.arrayBuffer())

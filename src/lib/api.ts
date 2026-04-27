@@ -37,6 +37,12 @@ export interface ProviderConfig {
   isActive: boolean
 }
 
+export interface ModelOption {
+  id: string       // Model identifier used in API calls
+  name: string     // Display name
+  tags?: string[]  // Tags like '推荐', '免费', '快速', '最新'
+}
+
 export interface ProviderPreset {
   provider: string
   name: string
@@ -44,6 +50,7 @@ export interface ProviderPreset {
   defaultModel: string
   description: string
   envKey: string
+  availableModels?: ModelOption[] // Selectable models for this provider
 }
 
 export interface SettingsResponse {

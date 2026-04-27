@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore } from '@/lib/store'
-import { api, type ProviderConfig, type AiCategory, type ProviderPreset } from '@/lib/api'
+import { api, type ProviderConfig, type AiCategory, type ProviderPreset, type ModelOption } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -34,6 +34,10 @@ import {
   Copy,
   Info,
   Wifi,
+  ListChecks,
+  Zap,
+  Star,
+  Sparkle,
 } from 'lucide-react'
 
 // ============================================================
@@ -61,6 +65,153 @@ const CATEGORY_META: Record<AiCategory, { label: string; icon: React.ReactNode; 
     icon: <Volume2 className="size-4" />,
     badge: '角色配音',
   },
+}
+
+// ============================================================
+// Model Selector — dropdown for available models with custom input
+// ============================================================
+
+const TAG_STYLES: Record<string, string> = {
+  '推荐': 'bg-amber-500/15 text-amber-600 border-amber-500/20',
+  '最新': 'bg-emerald-500/15 text-emerald-600 border-emerald-500/20',
+  '快速': 'bg-sky-500/15 text-sky-600 border-sky-500/20',
+  '经济': 'bg-violet-500/15 text-violet-600 border-violet-500/20',
+  '推理': 'bg-rose-500/15 text-rose-600 border-rose-500/20',
+  '高清': 'bg-teal-500/15 text-teal-600 border-teal-500/20',
+}
+
+function ModelSelector({
+  models,
+  value,
+  onChange,
+  defaultModel,
+}: {
+  models: ModelOption[]
+  value: string
+  onChange: (val: string) => void
+  defaultModel: string
+}) {
+  const [showCustom, setShowCustom] = useState(false)
+  const [customValue, setCustomValue] = useState(value)
+
+  // Check if current value matches any known model
+  const isKnownModel = models.some((m) => m.id === value)
+
+  // Sync custom value when value changes
+  useEffect(() => {
+    setCustomValue(value)
+  }, [value])
+
+  const handleModelSelect = (modelId: string) => {
+    onChange(modelId)
+    setShowCustom(false)
+  }
+
+  const handleCustomConfirm = () => {
+    if (customValue.trim()) {
+      onChange(customValue.trim())
+      setShowCustom(false)
+    }
+  }
+
+  return (
+    <div className="space-y-2">
+      {/* Model grid - clickable model cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-64 overflow-y-auto pr-1">
+        {models.map((m) => {
+          const isSelected = value === m.id
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => handleModelSelect(m.id)}
+              className={`flex items-center gap-2 px-2.5 py-2 rounded-md border text-left transition-all duration-150 ${
+                isSelected
+                  ? 'border-primary/50 bg-primary/10 ring-1 ring-primary/20'
+                  : 'border-border/40 bg-muted/20 hover:bg-muted/40 hover:border-border/60'
+              }`}
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-medium truncate">{m.name}</span>
+                  {m.id === defaultModel && (
+                    <Badge className="text-[8px] px-1 py-0 h-3.5 bg-primary/10 text-primary border-primary/20">
+                      默认
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-[9px] text-muted-foreground truncate mt-0.5">{m.id}</p>
+              </div>
+              {m.tags && m.tags.length > 0 && (
+                <div className="flex flex-wrap gap-0.5 flex-shrink-0">
+                  {m.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className={`text-[8px] px-1 py-0 rounded border ${TAG_STYLES[tag] ?? 'bg-muted/30 text-muted-foreground border-border/30'}`}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Custom model input toggle */}
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="text-[10px] h-6 gap-1"
+          onClick={() => setShowCustom(!showCustom)}
+        >
+          <ListChecks className="size-3" />
+          {showCustom ? '收起自定义输入' : '手动输入模型ID'}
+        </Button>
+        {!isKnownModel && value && (
+          <span className="text-[10px] text-muted-foreground truncate">
+            当前: <code className="bg-muted/50 px-1 rounded">{value}</code>
+          </span>
+        )}
+      </div>
+
+      {/* Custom model input */}
+      <AnimatePresence>
+        {showCustom && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden"
+          >
+            <div className="flex gap-2">
+              <Input
+                placeholder="输入模型ID，如 meta/llama-3.1-70b-instruct"
+                value={customValue}
+                onChange={(e) => setCustomValue(e.target.value)}
+                className="bg-muted/30 border-border/50 text-xs flex-1"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleCustomConfirm()
+                }}
+              />
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleCustomConfirm}
+                className="text-[10px] h-9"
+              >
+                应用
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
 }
 
 // ============================================================
@@ -247,26 +398,47 @@ function ProviderCard({
                   )}
                 </div>
 
-                {/* Base URL & Model */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium">Base URL</Label>
-                    <Input
-                      placeholder={
-                        preset?.defaultBaseUrl
-                          ? `默认: ${preset.defaultBaseUrl}`
-                          : 'https://api.example.com/v1'
-                      }
-                      value={baseUrl}
-                      onChange={(e) => setBaseUrl(e.target.value)}
-                      className="bg-muted/30 border-border/50"
+                {/* Base URL */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium">Base URL</Label>
+                  <Input
+                    placeholder={
+                      preset?.defaultBaseUrl
+                        ? `默认: ${preset.defaultBaseUrl}`
+                        : 'https://api.example.com/v1'
+                    }
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    className="bg-muted/30 border-border/50"
+                  />
+                  {preset?.defaultBaseUrl && baseUrl !== preset.defaultBaseUrl && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-[10px] h-6"
+                      onClick={() => setBaseUrl(preset.defaultBaseUrl)}
+                    >
+                      恢复默认 Base URL
+                    </Button>
+                  )}
+                </div>
+
+                {/* Model Selection */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium flex items-center gap-1.5">
+                    <Cpu className="size-3" />
+                    模型
+                  </Label>
+                  {/* Model selector with dropdown if available */}
+                  {preset?.availableModels && preset.availableModels.length > 0 ? (
+                    <ModelSelector
+                      models={preset.availableModels}
+                      value={model}
+                      onChange={setModel}
+                      defaultModel={preset.defaultModel}
                     />
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-medium flex items-center gap-1.5">
-                      <Cpu className="size-3" />
-                      模型名称
-                    </Label>
+                  ) : (
                     <Input
                       placeholder={
                         preset?.defaultModel
@@ -277,36 +449,8 @@ function ProviderCard({
                       onChange={(e) => setModel(e.target.value)}
                       className="bg-muted/30 border-border/50"
                     />
-                  </div>
+                  )}
                 </div>
-
-                {/* Default values hint */}
-                {(preset?.defaultBaseUrl || preset?.defaultModel) && (
-                  <div className="flex flex-wrap gap-2">
-                    {preset.defaultBaseUrl && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-[10px] h-6"
-                        onClick={() => setBaseUrl(preset.defaultBaseUrl)}
-                      >
-                        使用默认 Base URL
-                      </Button>
-                    )}
-                    {preset.defaultModel && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="text-[10px] h-6"
-                        onClick={() => setModel(preset.defaultModel)}
-                      >
-                        使用默认模型: {preset.defaultModel}
-                      </Button>
-                    )}
-                  </div>
-                )}
 
                 {/* Save button */}
                 <div className="flex justify-end pt-1">

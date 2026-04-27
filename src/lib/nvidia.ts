@@ -72,18 +72,66 @@ export interface ImageGenerationResponse {
 // ---- Available models ----
 
 export const NVIDIA_CHAT_MODELS = {
+  /** GLM-5.1 — Latest GLM model (推荐) */
+  GLM_5_1: 'z-ai/glm-5.1',
+  /** GLM-5 */
+  GLM_5: 'z-ai/glm5',
+  /** GLM-4.7 */
+  GLM_4_7: 'z-ai/glm4.7',
+  /** DeepSeek V4 Pro — Most capable DeepSeek (推荐) */
+  DEEPSEEK_V4_PRO: 'deepseek-ai/deepseek-v4-pro',
+  /** DeepSeek V4 Flash — Fast variant */
+  DEEPSEEK_V4_FLASH: 'deepseek-ai/deepseek-v4-flash',
+  /** DeepSeek V3.2 */
+  DEEPSEEK_V3_2: 'deepseek-ai/deepseek-v3.2',
+  /** DeepSeek V3.1 Terminus */
+  DEEPSEEK_V3_1_TERMINUS: 'deepseek-ai/deepseek-v3.1-terminus',
+  /** MiniMax M2.7 — Latest MiniMax */
+  MINIMAX_M2_7: 'minimaxai/minimax-m2.7',
+  /** MiniMax M2.5 */
+  MINIMAX_M2_5: 'minimaxai/minimax-m2.5',
+  /** Qwen 3.5 397B — Largest Qwen (推荐) */
+  QWEN_3_5_397B: 'qwen/qwen3.5-397b-a17b',
+  /** Qwen 3.5 122B */
+  QWEN_3_5_122B: 'qwen/qwen3.5-122b-a10b',
+  /** Kimi K2.5 — Latest Kimi */
+  KIMI_K2_5: 'moonshotai/kimi-k2.5',
+  /** Kimi K2 */
+  KIMI_K2: 'moonshotai/kimi-k2-instruct',
+  /** Llama 4 Maverick — Latest Meta model */
+  LLAMA_4_MAVERICK: 'meta/llama-4-maverick-17b-128e-instruct',
   /** Most capable — best for complex reasoning & long context */
   LLAMA_405B: 'meta/llama-3.1-405b-instruct',
   /** Balanced — good trade-off of quality and speed */
   LLAMA_70B: 'meta/llama-3.1-70b-instruct',
-  /** Mixtral MoE — efficient for diverse tasks */
-  MIXTRAL_8X22B: 'mistralai/mixtral-8x22b-instruct-v0.1',
+  /** Llama 3.3 70B */
+  LLAMA_3_3_70B: 'meta/llama-3.3-70b-instruct',
+  /** Nemotron Ultra 253B — NVIDIA's most capable model (推荐) */
+  NEMOTRON_ULTRA: 'nvidia/llama-3.1-nemotron-ultra-253b-v1',
   /** Nemotron — NVIDIA fine-tuned for instruction following */
   NEMOTRON_70B: 'nvidia/llama-3.1-nemotron-70b-instruct',
+  /** Mistral Large 3 675B — Largest Mistral */
+  MISTRAL_LARGE_3: 'mistralai/mistral-large-3-675b-instruct-2512',
+  /** Mistral Medium 3 */
+  MISTRAL_MEDIUM_3: 'mistralai/mistral-medium-3-instruct',
+  /** Mixtral MoE — efficient for diverse tasks */
+  MIXTRAL_8X22B: 'mistralai/mixtral-8x22b-instruct-v0.1',
+  /** Yi Large — 01.ai flagship */
+  YI_LARGE: '01-ai/yi-large',
+  /** Seed OSS 36B — Bytedance */
+  SEED_OSS_36B: 'bytedance/seed-oss-36b-instruct',
+  /** GPT-OSS 120B — OpenAI open source */
+  GPT_OSS_120B: 'openai/gpt-oss-120b',
 } as const
 
 export const NVIDIA_IMAGE_MODELS = {
   SDXL: 'stabilityai/stable-diffusion-xl',
+  SD3_MEDIUM: 'stabilityai/stable-diffusion-3-medium',
+  SD3_LARGE: 'stabilityai/stable-diffusion-3-large',
+} as const
+
+export const NVIDIA_TTS_MODELS = {
+  RIVA_TTS: 'nvidia/riva-tts',
 } as const
 
 // ---- Configuration ----
