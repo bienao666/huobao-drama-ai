@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useAppStore, type EpisodeDetail, type Character, type Scene, type Storyboard } from '@/lib/store'
 import { api } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
+import { AgentExecutionPanel, useAgentExecution } from '@/components/agent-execution-panel'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -174,6 +175,9 @@ export function EpisodeWorkspace() {
     message: string
     progress: number
   } | null>(null)
+
+  // Agent execution hook — manages SSE streaming with rich log rendering
+  const agentExec = useAgentExecution()
   const [batchProgress, setBatchProgress] = useState<{
     current: number
     total: number
@@ -286,16 +290,12 @@ export function EpisodeWorkspace() {
   const handleRewrite = async () => {
     if (!selectedEpisodeId || !selectedDramaId) return
     setAiLoading(true)
-    setGenerationProgress({ step: 'starting', message: '剧本改写专家开始工作...', progress: 10 })
     try {
-      await api.ai.agentStream(
+      await agentExec.startAgent(
         'script_rewriter',
         selectedEpisodeId,
         selectedDramaId,
-        '请将原始内容改写为标准剧本格式，使用read_episode_script工具读取内容，改写后用save_script工具保存。',
-        (data) => {
-          setGenerationProgress({ step: data.step, message: data.message, progress: Math.min(90, 10 + (data.step === 'tool_result' ? 30 : 10)) })
-        }
+        '请将原始内容改写为标准剧本格式，使用read_episode_script工具读取内容，改写后用save_script工具保存。'
       )
       toast({ title: '剧本改写完成' })
       await fetchEpisode()
@@ -304,7 +304,6 @@ export function EpisodeWorkspace() {
       toast({ title: '改写失败', description: String(err), variant: 'destructive' })
     } finally {
       setAiLoading(false)
-      setGenerationProgress(null)
     }
   }
 
@@ -330,16 +329,12 @@ export function EpisodeWorkspace() {
   const handleExtract = async () => {
     if (!selectedEpisodeId || !selectedDramaId) return
     setAiLoading(true)
-    setGenerationProgress({ step: 'starting', message: '角色场景提取器开始工作...', progress: 10 })
     try {
-      await api.ai.agentStream(
+      await agentExec.startAgent(
         'extractor',
         selectedEpisodeId,
         selectedDramaId,
-        '请从剧本中提取所有角色和场景信息。先使用read_script_for_extraction读取剧本，再使用read_existing_characters和read_existing_scenes查看已有数据，最后用save_characters和save_scenes保存提取结果（注意去重）。',
-        (data) => {
-          setGenerationProgress({ step: data.step, message: data.message, progress: Math.min(90, 10 + (data.step === 'tool_result' ? 20 : 5)) })
-        }
+        '请从剧本中提取所有角色和场景信息。先使用read_script_for_extraction读取剧本，再使用read_existing_characters和read_existing_scenes查看已有数据，最后用save_characters和save_scenes保存提取结果（注意去重）。'
       )
       toast({ title: '角色与场景提取完成' })
       await fetchEpisode()
@@ -347,7 +342,6 @@ export function EpisodeWorkspace() {
       toast({ title: '提取失败', description: String(err), variant: 'destructive' })
     } finally {
       setAiLoading(false)
-      setGenerationProgress(null)
     }
   }
 
@@ -356,16 +350,12 @@ export function EpisodeWorkspace() {
   const handleVoiceAssign = async () => {
     if (!selectedEpisodeId || !selectedDramaId) return
     setAiLoading(true)
-    setGenerationProgress({ step: 'starting', message: '音色分配师开始工作...', progress: 10 })
     try {
-      await api.ai.agentStream(
+      await agentExec.startAgent(
         'voice_assigner',
         selectedEpisodeId,
         selectedDramaId,
-        '请为所有角色分配合适的TTS音色。先使用get_characters获取角色列表，使用list_available_voices获取可用音色，然后根据角色性别、年龄、性格特征为每个角色分配最合适的音色。',
-        (data) => {
-          setGenerationProgress({ step: data.step, message: data.message, progress: Math.min(90, 10 + (data.step === 'tool_result' ? 20 : 5)) })
-        }
+        '请为所有角色分配合适的TTS音色。先使用get_characters获取角色列表，使用list_available_voices获取可用音色，然后根据角色性别、年龄、性格特征为每个角色分配最合适的音色。'
       )
       toast({ title: '音色分配完成' })
       await fetchEpisode()
@@ -373,7 +363,6 @@ export function EpisodeWorkspace() {
       toast({ title: '音色分配失败', description: String(err), variant: 'destructive' })
     } finally {
       setAiLoading(false)
-      setGenerationProgress(null)
     }
   }
 
@@ -382,16 +371,12 @@ export function EpisodeWorkspace() {
   const handleGenerateStoryboard = async () => {
     if (!selectedEpisodeId || !selectedDramaId) return
     setAiLoading(true)
-    setGenerationProgress({ step: 'starting', message: '分镜拆解专家开始工作...', progress: 10 })
     try {
-      await api.ai.agentStream(
+      await agentExec.startAgent(
         'storyboard_breaker',
         selectedEpisodeId,
         selectedDramaId,
-        '请将剧本拆解为分镜序列。先使用read_storyboard_context读取剧本、角色和场景信息，然后为每个镜头生成完整的分镜数据（包含imagePrompt和videoPrompt），最后用save_storyboards保存所有分镜。',
-        (data) => {
-          setGenerationProgress({ step: data.step, message: data.message, progress: Math.min(90, 10 + (data.step === 'tool_result' ? 20 : 5)) })
-        }
+        '请将剧本拆解为分镜序列。先使用read_storyboard_context读取剧本、角色和场景信息，然后为每个镜头生成完整的分镜数据（包含imagePrompt和videoPrompt），最后用save_storyboards保存所有分镜。'
       )
       toast({ title: '分镜生成完成' })
       await fetchEpisode()
@@ -399,7 +384,6 @@ export function EpisodeWorkspace() {
       toast({ title: '分镜生成失败', description: String(err), variant: 'destructive' })
     } finally {
       setAiLoading(false)
-      setGenerationProgress(null)
     }
   }
 
@@ -408,16 +392,12 @@ export function EpisodeWorkspace() {
   const handleGenerateEnhancedPrompts = async () => {
     if (!selectedEpisodeId || !selectedDramaId) return
     setAiLoading(true)
-    setGenerationProgress({ step: 'starting', message: '宫格提示词生成器开始工作...', progress: 10 })
     try {
-      await api.ai.agentStream(
+      await agentExec.startAgent(
         'grid_prompt_generator',
         selectedEpisodeId,
         selectedDramaId,
-        '请为所有角色、场景和分镜生成专业的AI绘图提示词。先使用read_characters、read_scenes、read_shots读取数据，然后为每个角色生成肖像提示词（generate_character_prompt），为每个场景生成背景提示词（generate_scene_prompt），为每个分镜生成宫格图提示词（generate_grid_prompt）。确保所有提示词使用英文，风格一致。',
-        (data) => {
-          setGenerationProgress({ step: data.step, message: data.message, progress: Math.min(90, 10 + (data.step === 'tool_result' ? 15 : 5)) })
-        }
+        '请为所有角色、场景和分镜生成专业的AI绘图提示词。先使用read_characters、read_scenes、read_shots读取数据，然后为每个角色生成肖像提示词（generate_character_prompt），为每个场景生成背景提示词（generate_scene_prompt），为每个分镜生成宫格图提示词（generate_grid_prompt）。确保所有提示词使用英文，风格一致。'
       )
       toast({ title: '提示词增强完成' })
       await fetchEpisode()
@@ -425,7 +405,6 @@ export function EpisodeWorkspace() {
       toast({ title: '提示词增强失败', description: String(err), variant: 'destructive' })
     } finally {
       setAiLoading(false)
-      setGenerationProgress(null)
     }
   }
 
@@ -1145,19 +1124,19 @@ export function EpisodeWorkspace() {
       )
     }
 
-    // Loading state
+    // Loading state — show Agent Execution Panel
     if (isRewriting || (aiLoading && activeStep === 'rewrite')) {
       return (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-center"
-          >
-            <Loader2 className="size-10 text-primary animate-spin mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-1">正在改写剧本...</h2>
-            <p className="text-sm text-muted-foreground">AI正在将原始内容转化为剧本格式</p>
-          </motion.div>
+        <div className="flex-1 p-6 overflow-y-auto">
+          <AgentExecutionPanel
+            agentType="script_rewriter"
+            agentName="剧本改写专家"
+            isRunning={agentExec.isRunning('script_rewriter')}
+            logs={agentExec.logs['script_rewriter'] || []}
+            resultText={agentExec.resultTexts['script_rewriter']}
+            duration={agentExec.durations['script_rewriter']}
+            error={agentExec.errors['script_rewriter']}
+          />
         </div>
       )
     }
@@ -1234,27 +1213,19 @@ export function EpisodeWorkspace() {
       )
     }
 
-    // Loading state
+    // Loading state — show Agent Execution Panel
     if (isExtracting || (aiLoading && activeStep === 'extract')) {
       return (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-center max-w-sm w-full"
-          >
-            <Loader2 className="size-10 text-primary animate-spin mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-1">正在提取角色与场景...</h2>
-            {generationProgress ? (
-              <>
-                <p className="text-sm text-muted-foreground mb-3">{generationProgress.message}</p>
-                <Progress value={generationProgress.progress} className="h-2 mb-1" />
-                <p className="text-xs text-muted-foreground">{generationProgress.progress}%</p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">AI正在从剧本中识别角色和场景信息</p>
-            )}
-          </motion.div>
+        <div className="flex-1 p-6 overflow-y-auto">
+          <AgentExecutionPanel
+            agentType="extractor"
+            agentName="角色场景提取器"
+            isRunning={agentExec.isRunning('extractor')}
+            logs={agentExec.logs['extractor'] || []}
+            resultText={agentExec.resultTexts['extractor']}
+            duration={agentExec.durations['extractor']}
+            error={agentExec.errors['extractor']}
+          />
         </div>
       )
     }
@@ -1542,27 +1513,19 @@ export function EpisodeWorkspace() {
       )
     }
 
-    // Loading state
+    // Loading state — show Agent Execution Panel
     if (aiLoading && activeStep === 'voice') {
       return (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-center w-full max-w-sm"
-          >
-            <Loader2 className="size-10 text-primary animate-spin mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-1">正在分配音色...</h2>
-            {generationProgress ? (
-              <>
-                <p className="text-sm text-muted-foreground mb-3">{generationProgress.message}</p>
-                <Progress value={generationProgress.progress} className="h-2 mb-1" />
-                <p className="text-xs text-muted-foreground">{generationProgress.progress}%</p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">AI正在根据角色特征分配音色</p>
-            )}
-          </motion.div>
+        <div className="flex-1 p-6 overflow-y-auto">
+          <AgentExecutionPanel
+            agentType="voice_assigner"
+            agentName="音色分配师"
+            isRunning={agentExec.isRunning('voice_assigner')}
+            logs={agentExec.logs['voice_assigner'] || []}
+            resultText={agentExec.resultTexts['voice_assigner']}
+            duration={agentExec.durations['voice_assigner']}
+            error={agentExec.errors['voice_assigner']}
+          />
         </div>
       )
     }
@@ -1688,27 +1651,19 @@ export function EpisodeWorkspace() {
       )
     }
 
-    // Loading state
+    // Loading state — show Agent Execution Panel
     if (isStoryboarding || (aiLoading && activeStep === 'storyboard')) {
       return (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-center max-w-sm w-full"
-          >
-            <Loader2 className="size-10 text-primary animate-spin mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-1">正在生成分镜...</h2>
-            {generationProgress ? (
-              <>
-                <p className="text-sm text-muted-foreground mb-3">{generationProgress.message}</p>
-                <Progress value={generationProgress.progress} className="h-2 mb-1" />
-                <p className="text-xs text-muted-foreground">{generationProgress.progress}%</p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">AI正在将剧本拆解为镜头序列</p>
-            )}
-          </motion.div>
+        <div className="flex-1 p-6 overflow-y-auto">
+          <AgentExecutionPanel
+            agentType="storyboard_breaker"
+            agentName="分镜拆解专家"
+            isRunning={agentExec.isRunning('storyboard_breaker')}
+            logs={agentExec.logs['storyboard_breaker'] || []}
+            resultText={agentExec.resultTexts['storyboard_breaker']}
+            duration={agentExec.durations['storyboard_breaker']}
+            error={agentExec.errors['storyboard_breaker']}
+          />
         </div>
       )
     }
@@ -2139,24 +2094,16 @@ export function EpisodeWorkspace() {
     // Loading state
     if (aiLoading && activeStep === 'prompt_enhance') {
       return (
-        <div className="flex-1 flex items-center justify-center p-6">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="text-center max-w-sm w-full"
-          >
-            <Loader2 className="size-10 text-primary animate-spin mx-auto mb-4" />
-            <h2 className="text-lg font-semibold mb-1">正在增强提示词...</h2>
-            {generationProgress ? (
-              <>
-                <p className="text-sm text-muted-foreground mb-3">{generationProgress.message}</p>
-                <Progress value={generationProgress.progress} className="h-2 mb-1" />
-                <p className="text-xs text-muted-foreground">{generationProgress.progress}%</p>
-              </>
-            ) : (
-              <p className="text-sm text-muted-foreground">AI正在为角色、场景和分镜生成专业提示词</p>
-            )}
-          </motion.div>
+        <div className="flex-1 p-6 overflow-y-auto">
+          <AgentExecutionPanel
+            agentType="grid_prompt_generator"
+            agentName="宫格提示词生成器"
+            isRunning={agentExec.isRunning('grid_prompt_generator')}
+            logs={agentExec.logs['grid_prompt_generator'] || []}
+            resultText={agentExec.resultTexts['grid_prompt_generator']}
+            duration={agentExec.durations['grid_prompt_generator']}
+            error={agentExec.errors['grid_prompt_generator']}
+          />
         </div>
       )
     }

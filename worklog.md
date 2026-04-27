@@ -164,3 +164,27 @@ Stage Summary:
 - grid_prompt_generator integrated into pipeline between storyboard and production
 - API endpoints: PATCH /api/agent/[type], GET /api/agents
 - Client API: api.agents.list(), api.agents.update()
+---
+Task ID: 1
+Agent: main
+Task: 核心能力优先级修复 — Agent执行过程渲染 + SKILL.md调用验证
+
+Work Log:
+- 分析了完整Agent架构代码(factory.ts/skills.ts/prompts.ts/types.ts/tools/executors.ts)
+- 确认SKILL.md调用链路已正确工作：factory.ts line 162-164 读取SKILL.md内容注入system prompt
+- 增强了executeAgent的onProgress回调，从简单(step, msg)升级为AgentProgressEvent结构化事件
+- 新增AgentProgressEvent类型：包含type/message/timestamp/toolCall/toolResult/textOutput等字段
+- 增强summarizeToolResult函数：为每个工具返回人类可读的中文摘要
+- 重写SSE stream route，发送富结构事件而非简单字符串
+- 创建AgentExecutionPanel组件：完整的时间线渲染，包括启动/思考/工具调用/工具结果/文本输出/完成/错误
+- 创建useAgentExecution hook：管理SSE连接、累积日志、运行状态、结果文本、持续时间、错误
+- 集成AgentExecutionPanel到5个面板的加载状态：剧本改写/提取/音色分配/分镜/提示词增强
+- 替换了旧的简单进度条(generationProgress + Loader2)为详细执行时间线面板
+- ESLint检查通过，dev server正常启动
+
+Stage Summary:
+- Agent执行过程现在可以在前端实时渲染为时间线面板
+- 每一步操作（思考/工具调用/工具结果）都有图标、徽章、时间戳、可展开详情
+- SKILL.md确认已正确加载并注入Agent的system prompt
+- 设置页面已有完整的Agent配置面板（工具列表+SKILL.md预览+系统提示词编辑器）
+- 关键产出文件：src/components/agent-execution-panel.tsx, src/lib/agents/factory.ts(增强), src/app/api/agent/[type]/stream/route.ts(增强), src/components/episode-workspace.tsx(集成)

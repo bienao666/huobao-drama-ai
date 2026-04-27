@@ -1,11 +1,12 @@
 // ============================================================
 // Agent SSE Streaming Route — /api/agent/[type]/stream
 // POST: Execute an agent with real-time SSE progress feedback
+// Sends rich structured events for frontend rendering
 // ============================================================
 
 import { NextRequest } from 'next/server'
 import { AgentType, ALL_AGENT_TYPES, AGENT_NAMES } from '@/lib/agents/types'
-import { executeAgent } from '@/lib/agents/factory'
+import { executeAgent, AgentProgressEvent } from '@/lib/agents/factory'
 
 // ============================================================
 // Validate agent type
@@ -58,13 +59,14 @@ export async function POST(
 
   // Create SSE stream
   const encoder = new TextEncoder()
+  const startTime = Date.now()
 
   const stream = new ReadableStream({
     async start(controller) {
-      const sendEvent = (data: Record<string, unknown>) => {
+      const sendEvent = (event: AgentProgressEvent) => {
         try {
           controller.enqueue(
-            encoder.encode(`data: ${JSON.stringify(data)}\n\n`)
+            encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
           )
         } catch {
           // Stream may have been closed
@@ -72,31 +74,38 @@ export async function POST(
       }
 
       try {
-        sendEvent({
-          step: 'starting',
-          message: `${AGENT_NAMES[agentType]} 开始工作...`,
-        })
-
         const result = await executeAgent(
           agentType,
           episodeId,
           dramaId,
           message,
-          (step, msg) => {
-            sendEvent({ step, message: msg })
+          (event) => {
+            sendEvent(event)
           }
         )
 
+        // Send final completed event with full results
         sendEvent({
-          step: 'completed',
-          text: result.text,
+          type: 'completed',
+          message: `${AGENT_NAMES[agentType]} 执行完成，共 ${result.steps} 步`,
+          timestamp: Date.now(),
+          stepNumber: result.steps,
+          agentType,
+          agentName: AGENT_NAMES[agentType],
+          textOutput: result.text,
+          // Include structured completion data
           toolCalls: result.toolCalls,
           steps: result.steps,
-        })
+          duration: Date.now() - startTime,
+        } as AgentProgressEvent & { toolCalls: unknown[]; steps: number; duration: number })
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error)
         console.error(`[Agent ${agentType} Stream] Execution failed:`, errorMsg)
-        sendEvent({ step: 'error', message: errorMsg })
+        sendEvent({
+          type: 'error',
+          message: errorMsg,
+          timestamp: Date.now(),
+        })
       } finally {
         controller.close()
       }
