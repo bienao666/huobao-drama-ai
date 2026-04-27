@@ -128,10 +128,24 @@ export async function ensureDatabaseReady(): Promise<void> {
 }
 
 /**
+ * Detect if the current database is PostgreSQL
+ */
+function isPostgres(): boolean {
+  const url = process.env.DATABASE_URL || ''
+  return url.startsWith('postgresql://') || url.startsWith('postgres://')
+}
+
+/**
  * SAFE migration: Only creates tables if they don't exist.
  * NEVER drops tables. This is safe for production auto-migration.
+ * Supports both SQLite (local dev) and PostgreSQL (Vercel production).
  */
 async function runSafeMigration(): Promise<void> {
+  const pg = isPostgres()
+
+  // Helper to run SQL with appropriate timestamp type
+  const tsType = pg ? 'TIMESTAMP(3)' : 'DATETIME'
+
   // Drama table
   await db.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "Drama" (
@@ -143,8 +157,8 @@ async function runSafeMigration(): Promise<void> {
       "coverImage" TEXT,
       "totalEpisodes" INTEGER NOT NULL DEFAULT 0,
       "status" TEXT NOT NULL DEFAULT 'draft',
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "Drama_pkey" PRIMARY KEY ("id")
     )
   `)
@@ -164,8 +178,8 @@ async function runSafeMigration(): Promise<void> {
       "status" TEXT NOT NULL DEFAULT 'draft',
       "videoUrl" TEXT,
       "duration" INTEGER NOT NULL DEFAULT 0,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "Episode_pkey" PRIMARY KEY ("id")
     )
   `)
@@ -184,8 +198,8 @@ async function runSafeMigration(): Promise<void> {
       "voiceStyle" TEXT NOT NULL DEFAULT '',
       "voiceId" TEXT,
       "imageUrl" TEXT,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "Character_pkey" PRIMARY KEY ("id")
     )
   `)
@@ -200,8 +214,8 @@ async function runSafeMigration(): Promise<void> {
       "description" TEXT NOT NULL DEFAULT '',
       "prompt" TEXT NOT NULL DEFAULT '',
       "imageUrl" TEXT,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "Scene_pkey" PRIMARY KEY ("id")
     )
   `)
@@ -219,7 +233,7 @@ async function runSafeMigration(): Promise<void> {
       "action" TEXT NOT NULL DEFAULT '',
       "dialogue" TEXT,
       "dialogueChar" TEXT,
-      "duration" DOUBLE PRECISION NOT NULL DEFAULT 3.0,
+      "duration" ${pg ? 'DOUBLE PRECISION' : 'REAL'} NOT NULL DEFAULT 3.0,
       "imagePrompt" TEXT,
       "videoPrompt" TEXT,
       "atmosphere" TEXT,
@@ -228,8 +242,8 @@ async function runSafeMigration(): Promise<void> {
       "ttsAudioUrl" TEXT,
       "composedUrl" TEXT,
       "status" TEXT NOT NULL DEFAULT 'pending',
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "Storyboard_pkey" PRIMARY KEY ("id")
     )
   `)
@@ -246,8 +260,8 @@ async function runSafeMigration(): Promise<void> {
       "model" TEXT NOT NULL DEFAULT '',
       "isActive" BOOLEAN NOT NULL DEFAULT false,
       "sort" INTEGER NOT NULL DEFAULT 0,
-      "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "createdAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" ${tsType} NOT NULL DEFAULT CURRENT_TIMESTAMP,
       CONSTRAINT "AiProvider_pkey" PRIMARY KEY ("id")
     )
   `)
@@ -260,24 +274,26 @@ async function runSafeMigration(): Promise<void> {
     CREATE UNIQUE INDEX IF NOT EXISTS "AiProvider_category_provider_key" ON "AiProvider"("category", "provider")
   `)
 
-  // Add foreign key constraints (safe - use DO block to check first)
-  await db.$executeRawUnsafe(`
-    DO $$
-    BEGIN
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Episode_dramaId_fkey') THEN
-        ALTER TABLE "Episode" ADD CONSTRAINT "Episode_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Character_dramaId_fkey') THEN
-        ALTER TABLE "Character" ADD CONSTRAINT "Character_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Scene_dramaId_fkey') THEN
-        ALTER TABLE "Scene" ADD CONSTRAINT "Scene_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-      END IF;
-      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Storyboard_episodeId_fkey') THEN
-        ALTER TABLE "Storyboard" ADD CONSTRAINT "Storyboard_episodeId_fkey" FOREIGN KEY ("episodeId") REFERENCES "Episode"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-      END IF;
-    END $$
-  `)
+  // Add foreign key constraints — only on PostgreSQL (SQLite handles via Prisma)
+  if (pg) {
+    await db.$executeRawUnsafe(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Episode_dramaId_fkey') THEN
+          ALTER TABLE "Episode" ADD CONSTRAINT "Episode_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Character_dramaId_fkey') THEN
+          ALTER TABLE "Character" ADD CONSTRAINT "Character_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Scene_dramaId_fkey') THEN
+          ALTER TABLE "Scene" ADD CONSTRAINT "Scene_dramaId_fkey" FOREIGN KEY ("dramaId") REFERENCES "Drama"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'Storyboard_episodeId_fkey') THEN
+          ALTER TABLE "Storyboard" ADD CONSTRAINT "Storyboard_episodeId_fkey" FOREIGN KEY ("episodeId") REFERENCES "Episode"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+        END IF;
+      END $$
+    `)
+  }
 
   // Add any missing columns (for tables that might exist but be incomplete)
   await addColumnIfNotExists('Character', 'dramaId', 'TEXT NOT NULL DEFAULT \'\'')

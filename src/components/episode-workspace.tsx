@@ -331,7 +331,7 @@ export function EpisodeWorkspace() {
     setGeneratingShotImg(storyboard.id)
     try {
       const result = await api.ai.generateImage(storyboard.imagePrompt, '1024x576')
-      await api.storyboards.update(storyboard.id, { firstFrameUrl: result.url })
+      await api.storyboards.update(storyboard.id, { firstFrameUrl: result.imageUrl })
       toast({ title: `镜头 ${storyboard.shotNumber} 图片已生成` })
       await fetchEpisode()
     } catch (err) {
@@ -353,7 +353,7 @@ export function EpisodeWorkspace() {
       setGeneratingShotImg(sb.id)
       try {
         const result = await api.ai.generateImage(sb.imagePrompt!, '1024x576')
-        await api.storyboards.update(sb.id, { firstFrameUrl: result.url })
+        await api.storyboards.update(sb.id, { firstFrameUrl: result.imageUrl })
       } catch {
         // Continue with next shot even if one fails
       }
