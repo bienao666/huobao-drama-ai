@@ -68,3 +68,22 @@ Stage Summary:
 - 管线从4步扩展为6步（增加音色分配步骤）
 - Agent执行支持SSE实时进度反馈
 - 5个SKILL.md提供专业领域知识增强Agent表现
+
+---
+Task ID: 7-8
+Agent: Main Orchestrator
+Task: 扩展前端管线 + 完善制作模块
+
+Work Log:
+- 管线从4步扩展为6步：原始内容→AI改写→提取→音色分配→分镜→制作
+- 前端3个核心AI操作切换到Agent架构（script_rewriter/extractor/storyboard_breaker）
+- 添加voice_assigner Agent前端调用（handleVoiceAssign）
+- 添加音色分配面板（renderVoicePanel）：角色卡片展示、音色状态、AI一键分配
+- 制作模块步骤编号更新为06
+- 创建5个SKILL.md文件：script_rewriter/extractor/storyboard_breaker/voice_assigner/grid_prompt_generator
+
+Stage Summary:
+- 完成了与参考工程的核心差距弥补：Agent架构已接入前端
+- 管线完整6步，对标参考工程11步流程的核心部分
+- 5个SKILL.md提供Agent专业领域知识
+- 所有代码已推送到GitHub（commit f8f1b88）
