@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getAllProviders, saveProviderConfig, setActiveProvider, PROVIDER_PRESETS, type AiCategory } from '@/lib/ai-config'
+import { getAllProviders, saveProviderConfig, setActiveProvider, PROVIDER_PRESETS, type AiCategory, getExistingProviderConfig } from '@/lib/ai-config'
 
 // GET /api/settings - Return current settings with provider configs
 export async function GET() {
@@ -42,15 +42,23 @@ export async function POST(request: NextRequest) {
       await setActiveProvider(category as AiCategory, provider)
     }
 
-    await saveProviderConfig({
-      category: category as AiCategory,
-      provider,
-      name: name || provider,
-      apiKey: apiKey || '',
-      baseUrl: baseUrl || '',
-      model: model || '',
-      isActive: isActive ?? false,
-    })
+    // Only save full config if fields beyond category/provider/isActive are provided
+    // This prevents handleSetActive from overwriting previously saved apiKey/baseUrl/model with empty strings
+    const hasConfigFields = apiKey !== undefined || baseUrl !== undefined || model !== undefined || name !== undefined
+    if (hasConfigFields) {
+      // Get existing config to merge (preserve fields not explicitly provided)
+      const existing = await getExistingProviderConfig(category as AiCategory, provider)
+
+      await saveProviderConfig({
+        category: category as AiCategory,
+        provider,
+        name: name ?? existing?.name ?? provider,
+        apiKey: apiKey ?? existing?.apiKey ?? '',
+        baseUrl: baseUrl ?? existing?.baseUrl ?? '',
+        model: model ?? existing?.model ?? '',
+        isActive: isActive ?? existing?.isActive ?? false,
+      })
+    }
 
     // Return updated providers
     const providers: Record<string, Awaited<ReturnType<typeof getAllProviders>>> = {}

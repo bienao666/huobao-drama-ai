@@ -341,13 +341,15 @@ export async function getActiveProvider(category: AiCategory): Promise<ProviderC
   if (dbProvider) {
     // If the provider needs no API key, or has one configured, use it
     if (noKeyProviders.includes(dbProvider.provider) || dbProvider.apiKey) {
+      // Find preset for this provider to get defaultModel fallback
+      const preset = PROVIDER_PRESETS[category]?.find((p) => p.provider === dbProvider.provider)
       return {
         category,
         provider: dbProvider.provider,
         name: dbProvider.name,
         apiKey: dbProvider.apiKey || '',
-        baseUrl: dbProvider.baseUrl,
-        model: dbProvider.model,
+        baseUrl: dbProvider.baseUrl || preset?.defaultBaseUrl || '',
+        model: dbProvider.model || preset?.defaultModel || '',
         isActive: true,
       }
     }
@@ -447,6 +449,31 @@ export async function saveProviderConfig(config: ProviderConfig): Promise<void> 
 }
 
 /**
+ * Get existing provider config from DB (for merge during save).
+ * Returns null if not found in DB.
+ */
+export async function getExistingProviderConfig(
+  category: AiCategory,
+  provider: string
+): Promise<ProviderConfig | null> {
+  const dbProvider = await db.aiProvider.findUnique({
+    where: {
+      category_provider: { category, provider },
+    },
+  })
+  if (!dbProvider) return null
+  return {
+    category,
+    provider: dbProvider.provider,
+    name: dbProvider.name,
+    apiKey: dbProvider.apiKey,
+    baseUrl: dbProvider.baseUrl,
+    model: dbProvider.model,
+    isActive: dbProvider.isActive,
+  }
+}
+
+/**
  * Set only one active provider per category (deactivate others).
  */
 export async function setActiveProvider(category: AiCategory, provider: string): Promise<void> {
@@ -497,7 +524,7 @@ export const aiClient = {
     }
 
     const body = {
-      model: options?.model ?? provider.model,
+      model: options?.model || provider.model,
       messages,
       temperature: options?.temperature ?? 0.7,
       max_tokens: options?.max_tokens ?? 4096,

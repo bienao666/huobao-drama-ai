@@ -129,7 +129,7 @@ async function callLLMWithTools(
   }
 
   const body: Record<string, unknown> = {
-    model: options.model ?? provider.model,
+    model: options.model || provider.model,
     messages: messages.map((m) => ({
       role: m.role,
       content: m.content,
