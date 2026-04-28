@@ -17,7 +17,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from '@/components/ui/dialog'
-import { ArrowLeft, Plus, Film, Users, MapPin, ChevronRight, Clock } from 'lucide-react'
+import { ArrowLeft, Plus, Film, Users, MapPin, ChevronRight, Clock, Pencil } from 'lucide-react'
 
 // ── helpers ──────────────────────────────────────────────────
 
@@ -146,6 +146,11 @@ export function ProjectDetailView() {
   const [newEpTitle, setNewEpTitle] = useState('')
   const [adding, setAdding] = useState(false)
 
+  // Inline title editing
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [editTitle, setEditTitle] = useState('')
+  const [savingTitle, setSavingTitle] = useState(false)
+
   // Fetch drama detail
   const fetchDrama = useCallback(async () => {
     if (!selectedDramaId) return
@@ -185,6 +190,38 @@ export function ProjectDetailView() {
 
   const drama = currentDrama as DramaDetail | null
 
+  // Title editing handlers
+  const handleStartEditTitle = () => {
+    if (!drama) return
+    setEditTitle(drama.title)
+    setIsEditingTitle(true)
+  }
+
+  const handleSaveTitle = async () => {
+    if (!drama || !editTitle.trim()) return
+    if (editTitle.trim() === drama.title) {
+      setIsEditingTitle(false)
+      return
+    }
+    setSavingTitle(true)
+    try {
+      await api.dramas.update(drama.id, { title: editTitle.trim() })
+      await fetchDrama()
+      toast({ title: '项目名称已更新' })
+    } catch (err) {
+      toast({ title: '更新失败', description: String(err), variant: 'destructive' })
+      setEditTitle(drama.title)
+    } finally {
+      setSavingTitle(false)
+      setIsEditingTitle(false)
+    }
+  }
+
+  const handleCancelEditTitle = () => {
+    setIsEditingTitle(false)
+    setEditTitle('')
+  }
+
   return (
     <div className="flex-1 flex flex-col">
       {/* Header */}
@@ -205,7 +242,33 @@ export function ProjectDetailView() {
           {drama && (
             <div className="flex items-start justify-between gap-4">
               <div className="min-w-0">
-                <h1 className="text-xl sm:text-2xl font-bold truncate">{drama.title}</h1>
+                {isEditingTitle ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveTitle()
+                        if (e.key === 'Escape') handleCancelEditTitle()
+                      }}
+                      onBlur={handleSaveTitle}
+                      disabled={savingTitle}
+                      autoFocus
+                      className="text-xl sm:text-2xl font-bold h-auto py-0 px-1 border-primary/50"
+                    />
+                    {savingTitle && (
+                      <span className="text-xs text-muted-foreground animate-pulse">保存中...</span>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    className="group/title inline-flex items-center gap-1.5 cursor-pointer"
+                    onDoubleClick={handleStartEditTitle}
+                  >
+                    <h1 className="text-xl sm:text-2xl font-bold truncate">{drama.title}</h1>
+                    <Pencil className="size-4 text-muted-foreground opacity-0 group-hover/title:opacity-100 transition-opacity flex-shrink-0" />
+                  </div>
+                )}
                 <div className="flex flex-wrap items-center gap-2 mt-2">
                   <Badge variant="secondary" className="text-xs">
                     {drama.genre}

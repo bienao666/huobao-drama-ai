@@ -1056,7 +1056,9 @@ export function SettingsView() {
       setTestingCategory(category)
       setTestResults((prev) => ({ ...prev, [category]: null }))
       try {
-        const result = await api.ai.testConnection(category)
+        // Get the model from the currently active provider for this category
+        const activeProvider = providersData[category]?.find((p) => p.isActive)
+        const result = await api.ai.testConnection(category, activeProvider?.model)
         setTestResults((prev) => ({ ...prev, [category]: result }))
         if (result.success) {
           toast({
@@ -1085,7 +1087,7 @@ export function SettingsView() {
         setTestingCategory(null)
       }
     },
-    [toast]
+    [toast, providersData]
   )
 
   return (

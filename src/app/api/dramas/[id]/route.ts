@@ -31,7 +31,7 @@ export async function GET(
   }
 }
 
-// PATCH /api/dramas/[id] - Update drama (title is immutable after creation)
+// PATCH /api/dramas/[id] - Update drama
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -40,12 +40,9 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    // Title is immutable after creation — remove it if present
-    const { title: _title, ...updateData } = body;
-
     const drama = await db.drama.update({
       where: { id },
-      data: updateData,
+      data: body,
     });
 
     return NextResponse.json(drama);

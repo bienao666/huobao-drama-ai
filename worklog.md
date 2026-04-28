@@ -188,3 +188,53 @@ Stage Summary:
 - SKILL.md确认已正确加载并注入Agent的system prompt
 - 设置页面已有完整的Agent配置面板（工具列表+SKILL.md预览+系统提示词编辑器）
 - 关键产出文件：src/components/agent-execution-panel.tsx, src/lib/agents/factory.ts(增强), src/app/api/agent/[type]/stream/route.ts(增强), src/components/episode-workspace.tsx(集成)
+
+---
+Task ID: 1
+Agent: Bug Fix Agent
+Task: Fix Bug 1 — Project name should be editable after creation
+
+Work Log:
+- Fixed PATCH endpoint in `/src/app/api/dramas/[id]/route.ts`:
+  - Removed the title exclusion logic (`const { title: _title, ...updateData } = body`)
+  - Now passes `body` directly to `db.drama.update()` so `title` can be updated
+  - Updated comment from "title is immutable" to reflect new behavior
+- Verified `api.ts` `dramas.update()` method already sends full data object via PATCH (no change needed)
+- Added inline title editing UI to `/src/components/project-detail.tsx`:
+  - Added `Pencil` icon import from lucide-react
+  - Added state variables: `isEditingTitle`, `editTitle`, `savingTitle`
+  - Added handlers: `handleStartEditTitle`, `handleSaveTitle`, `handleCancelEditTitle`
+  - Title displays normally with a Pencil icon that appears on hover
+  - Double-click on title area switches to Input field
+  - Enter or blur saves the title via `api.dramas.update(id, { title })`
+  - Escape cancels editing and reverts
+  - Saving state shows "保存中..." with pulse animation
+  - Error handling with toast notification on failure
+  - Re-fetches drama detail after successful save to update UI
+- Lint passes clean, no errors
+- Dev server running without errors
+
+Stage Summary:
+- Backend PATCH endpoint now allows title updates (was previously stripped)
+- Frontend has full inline editing UX: double-click → edit → Enter/blur save / Escape cancel
+- Pencil icon appears on hover as visual affordance
+- Loading/saving/error states properly handled
+
+---
+Task ID: 2
+Agent: Bug Fix Agent
+Task: Fix Bug 2 — Test connection uses default model instead of newly selected one
+
+Work Log:
+- Root cause: `handleTestConnection` called `api.ai.testConnection(category)` which only sent `{ category }` to the backend — no model was passed. Backend then read from DB via `getActiveProvider()`, which could return a stale or default model if the user had just changed it.
+- Fix 1: Updated `api.ts` `testConnection()` signature from `(category?)` to `(category?, model?)`, passing `model` in the JSON body
+- Fix 2: Updated `settings-view.tsx` `handleTestConnection` to find the active provider's model from `providersData` and pass it as the second argument to `api.ai.testConnection(category, activeProvider?.model)`. Also added `providersData` to the useCallback dependency array.
+- Fix 3: Backend `/api/ai/test-connection/route.ts` already had model override logic (reads `body.model`, uses it for LLM test). Verified it works correctly — no change needed.
+- Fix 4: Fixed `settings/route.ts` POST handler — changed `??` to `||` for `name`, `apiKey`, `baseUrl`, and `model` fallbacks. The `??` operator doesn't handle empty strings (`'' ?? fallback` returns `''`), so if a user cleared a field, it wouldn't fall back to the existing DB value. Using `||` ensures empty strings properly fall back.
+- Lint passes clean, no errors
+- Dev server running without errors
+
+Stage Summary:
+- Test connection now explicitly passes the active provider's model from frontend to backend
+- Backend model override already worked; the missing piece was the frontend not sending it
+- Empty string fallback fixed in settings save route (?? → ||) prevents accidental field clearing

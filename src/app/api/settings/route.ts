@@ -52,10 +52,10 @@ export async function POST(request: NextRequest) {
       await saveProviderConfig({
         category: category as AiCategory,
         provider,
-        name: name ?? existing?.name ?? provider,
-        apiKey: apiKey ?? existing?.apiKey ?? '',
-        baseUrl: baseUrl ?? existing?.baseUrl ?? '',
-        model: model ?? existing?.model ?? '',
+        name: name || existing?.name || provider,
+        apiKey: apiKey || existing?.apiKey || '',
+        baseUrl: baseUrl || existing?.baseUrl || '',
+        model: model || existing?.model || '',
         isActive: isActive ?? existing?.isActive ?? false,
       })
     }

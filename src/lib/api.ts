@@ -451,7 +451,7 @@ export const api = {
         body: JSON.stringify({ storyboardId, text, voiceId }),
       }),
 
-    testConnection: (category?: AiCategory) =>
+    testConnection: (category?: AiCategory, model?: string) =>
       request<{
         success: boolean
         provider?: string
@@ -461,7 +461,7 @@ export const api = {
       }>('/api/ai/test-connection', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category: category || 'llm' }),
+        body: JSON.stringify({ category: category || 'llm', model }),
       }),
 
     // ---- Agent API ----
