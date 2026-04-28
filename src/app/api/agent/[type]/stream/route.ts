@@ -38,7 +38,7 @@ export async function POST(
   const agentType = type as AgentType
 
   // Parse request body
-  let body: { episodeId?: string; dramaId?: string; message?: string }
+  let body: { episodeId?: string; dramaId?: string; message?: string; model?: string }
   try {
     body = await request.json()
   } catch {
@@ -48,7 +48,7 @@ export async function POST(
     )
   }
 
-  const { episodeId, dramaId, message } = body
+  const { episodeId, dramaId, message, model } = body
 
   if (!episodeId || !dramaId || !message) {
     return new Response(
@@ -81,7 +81,8 @@ export async function POST(
           message,
           (event) => {
             sendEvent(event)
-          }
+          },
+          { modelOverride: model }
         )
 
         // Send final completed event with full results

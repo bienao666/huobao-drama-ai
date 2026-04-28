@@ -190,14 +190,15 @@ export async function executeAgent(
   episodeId: string,
   dramaId: string,
   message: string,
-  onProgress?: AgentProgressCallback
+  onProgress?: AgentProgressCallback,
+  options?: { modelOverride?: string }
 ): Promise<AgentExecutionResult> {
   // 1. Get agent config from DB (or use defaults)
   const dbConfig = await getAgentConfig(agentType)
 
   const systemPrompt =
     dbConfig?.systemPrompt || DEFAULT_SYSTEM_PROMPTS[agentType]
-  const model = dbConfig?.model || undefined
+  const model = options?.modelOverride || dbConfig?.model || undefined
   const temperature = dbConfig?.temperature ?? 0.7
   const maxTokens = dbConfig?.maxTokens ?? 4096
 

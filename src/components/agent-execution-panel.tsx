@@ -534,7 +534,8 @@ export function useAgentExecution() {
     agentType: string,
     episodeId: string,
     dramaId: string,
-    message: string
+    message: string,
+    options?: { model?: string }
   ) => {
     // Reset state for this agent
     setLogs(prev => ({ ...prev, [agentType]: [] }))
@@ -547,7 +548,7 @@ export function useAgentExecution() {
       const res = await fetch(`/api/agent/${agentType}/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ episodeId, dramaId, message }),
+        body: JSON.stringify({ episodeId, dramaId, message, model: options?.model }),
       })
 
       if (!res.ok) {

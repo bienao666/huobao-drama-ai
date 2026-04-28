@@ -6,6 +6,7 @@ import { useAppStore, type EpisodeDetail, type Character, type Scene, type Story
 import { api } from '@/lib/api'
 import { useToast } from '@/hooks/use-toast'
 import { AgentExecutionPanel, useAgentExecution } from '@/components/agent-execution-panel'
+import { ModelSelector } from '@/components/model-selector'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -187,12 +188,24 @@ export function EpisodeWorkspace() {
   const previewVideoRef = useRef<HTMLVideoElement>(null)
   const previewAudioRef = useRef<HTMLAudioElement>(null)
 
-  // Active AI models for display in header
-  const [activeModels, setActiveModels] = useState<Record<string, { provider: string; model: string; name: string } | null> | null>(null)
+  // Workspace model selection - initialized from active config, user can override
+  const [workspaceModels, setWorkspaceModels] = useState<{
+    llm: string
+    image: string
+    video: string
+    tts: string
+  }>({ llm: '', image: '', video: '', tts: '' })
 
-  // Fetch active models on mount and when returning from settings
+  // Initialize workspace models from active provider config
   const fetchActiveModels = useCallback(() => {
-    api.ai.getActiveModels().then(setActiveModels).catch(() => {})
+    api.ai.getActiveModels().then((models) => {
+      setWorkspaceModels(prev => ({
+        llm: models.llm?.model || prev.llm,
+        image: models.image?.model || prev.image,
+        video: models.video?.model || prev.video,
+        tts: models.tts?.model || prev.tts,
+      }))
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -306,7 +319,8 @@ export function EpisodeWorkspace() {
         'script_rewriter',
         selectedEpisodeId,
         selectedDramaId,
-        '请将原始内容改写为标准剧本格式，使用read_episode_script工具读取内容，改写后用save_script工具保存。'
+        '请将原始内容改写为标准剧本格式，使用read_episode_script工具读取内容，改写后用save_script工具保存。',
+        { model: workspaceModels.llm || undefined }
       )
       toast({ title: '剧本改写完成' })
       await fetchEpisode()
@@ -345,7 +359,8 @@ export function EpisodeWorkspace() {
         'extractor',
         selectedEpisodeId,
         selectedDramaId,
-        '请从剧本中提取所有角色和场景信息。先使用read_script_for_extraction读取剧本，再使用read_existing_characters和read_existing_scenes查看已有数据，最后用save_characters和save_scenes保存提取结果（注意去重）。'
+        '请从剧本中提取所有角色和场景信息。先使用read_script_for_extraction读取剧本，再使用read_existing_characters和read_existing_scenes查看已有数据，最后用save_characters和save_scenes保存提取结果（注意去重）.',
+        { model: workspaceModels.llm || undefined }
       )
       toast({ title: '角色与场景提取完成' })
       await fetchEpisode()
@@ -366,7 +381,8 @@ export function EpisodeWorkspace() {
         'voice_assigner',
         selectedEpisodeId,
         selectedDramaId,
-        '请为所有角色分配合适的TTS音色。先使用get_characters获取角色列表，使用list_available_voices获取可用音色，然后根据角色性别、年龄、性格特征为每个角色分配最合适的音色。'
+        '请为所有角色分配合适的TTS音色。先使用get_characters获取角色列表，使用list_available_voices获取可用音色，然后根据角色性别、年龄、性格特征为每个角色分配最合适的音色。',
+        { model: workspaceModels.llm || undefined }
       )
       toast({ title: '音色分配完成' })
       await fetchEpisode()
@@ -387,7 +403,8 @@ export function EpisodeWorkspace() {
         'storyboard_breaker',
         selectedEpisodeId,
         selectedDramaId,
-        '请将剧本拆解为分镜序列。先使用read_storyboard_context读取剧本、角色和场景信息，然后为每个镜头生成完整的分镜数据。⚠️重要：每个分镜的imagePrompt必须是6维度专业英文提示词（风格+构图+角色+场景+光线+画质），videoPrompt必须使用3秒分段XML格式。一步到位，无需二次增强。最后用save_storyboards保存所有分镜。'
+        '请将剧本拆解为分镜序列。先使用read_storyboard_context读取剧本、角色和场景信息，然后为每个镜头生成完整的分镜数据。⚠️重要：每个分镜的imagePrompt必须是6维度专业英文提示词（风格+构图+角色+场景+光线+画质），videoPrompt必须使用3秒分段XML格式。一步到位，无需二次增强。最后用save_storyboards保存所有分镜。',
+        { model: workspaceModels.llm || undefined }
       )
       toast({ title: '分镜生成完成' })
       await fetchEpisode()
@@ -408,7 +425,8 @@ export function EpisodeWorkspace() {
         'grid_prompt_generator',
         selectedEpisodeId,
         selectedDramaId,
-        `请为镜头${storyboard.shotNumber}生成专业的AI绘图提示词。先使用read_shots读取分镜数据，然后为镜头${storyboard.shotNumber}生成宫格图提示词（generate_grid_prompt）。确保提示词使用英文，风格一致。`
+        `请为镜头${storyboard.shotNumber}生成专业的AI绘图提示词。先使用read_shots读取分镜数据，然后为镜头${storyboard.shotNumber}生成宫格图提示词（generate_grid_prompt）。确保提示词使用英文，风格一致。`,
+        { model: workspaceModels.llm || undefined }
       )
       toast({ title: `镜头 ${storyboard.shotNumber} 提示词已增强` })
       await fetchEpisode()
@@ -2595,26 +2613,23 @@ export function EpisodeWorkspace() {
             {episodeTitle}
           </Badge>
 
-          {/* Status indicators + Active models */}
-          <div className="hidden sm:flex items-center gap-2 ml-auto">
-            {activeModels?.llm && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 font-mono border-primary/30 text-primary/80 max-w-[140px]">
-                <Sparkles className="size-2.5 flex-shrink-0" />
-                <span className="truncate">{activeModels.llm.model || activeModels.llm.name}</span>
-              </Badge>
-            )}
-            {activeModels?.image && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 font-mono border-emerald-500/30 text-emerald-600 max-w-[140px]">
-                <ImageIcon className="size-2.5 flex-shrink-0" />
-                <span className="truncate">{activeModels.image.model || activeModels.image.name}</span>
-              </Badge>
-            )}
-            {activeModels?.video && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 font-mono border-violet-500/30 text-violet-600 max-w-[140px]">
-                <Video className="size-2.5 flex-shrink-0" />
-                <span className="truncate">{activeModels.video.model || activeModels.video.name}</span>
-              </Badge>
-            )}
+          {/* Model selectors */}
+          <div className="hidden sm:flex items-center gap-1.5 ml-auto">
+            <ModelSelector
+              category="llm"
+              value={workspaceModels.llm}
+              onChange={(m) => setWorkspaceModels(prev => ({ ...prev, llm: m }))}
+            />
+            <ModelSelector
+              category="image"
+              value={workspaceModels.image}
+              onChange={(m) => setWorkspaceModels(prev => ({ ...prev, image: m }))}
+            />
+            <ModelSelector
+              category="video"
+              value={workspaceModels.video}
+              onChange={(m) => setWorkspaceModels(prev => ({ ...prev, video: m }))}
+            />
             {episode?.scriptStatus && episode.scriptStatus !== 'pending' && (
               <div className="flex items-center gap-1">
                 <FileText className="size-3 text-muted-foreground" />
