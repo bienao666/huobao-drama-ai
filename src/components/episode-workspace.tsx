@@ -187,6 +187,14 @@ export function EpisodeWorkspace() {
   const previewVideoRef = useRef<HTMLVideoElement>(null)
   const previewAudioRef = useRef<HTMLAudioElement>(null)
 
+  // Active AI models for display in header
+  const [activeModels, setActiveModels] = useState<Record<string, { provider: string; model: string; name: string } | null> | null>(null)
+
+  // Fetch active models on mount
+  useEffect(() => {
+    api.ai.getActiveModels().then(setActiveModels).catch(() => {})
+  }, [])
+
   // ── Fetch episode data ─────────────────────────────────────
 
   const fetchEpisode = useCallback(async () => {
@@ -2577,8 +2585,26 @@ export function EpisodeWorkspace() {
             {episodeTitle}
           </Badge>
 
-          {/* Status indicators */}
+          {/* Status indicators + Active models */}
           <div className="hidden sm:flex items-center gap-2 ml-auto">
+            {activeModels?.llm && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 font-mono border-primary/30 text-primary/80 max-w-[140px]">
+                <Sparkles className="size-2.5 flex-shrink-0" />
+                <span className="truncate">{activeModels.llm.model || activeModels.llm.name}</span>
+              </Badge>
+            )}
+            {activeModels?.image && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 font-mono border-emerald-500/30 text-emerald-600 max-w-[140px]">
+                <ImageIcon className="size-2.5 flex-shrink-0" />
+                <span className="truncate">{activeModels.image.model || activeModels.image.name}</span>
+              </Badge>
+            )}
+            {activeModels?.video && (
+              <Badge variant="outline" className="text-[10px] px-1.5 py-0 gap-1 font-mono border-violet-500/30 text-violet-600 max-w-[140px]">
+                <Video className="size-2.5 flex-shrink-0" />
+                <span className="truncate">{activeModels.video.model || activeModels.video.name}</span>
+              </Badge>
+            )}
             {episode?.scriptStatus && episode.scriptStatus !== 'pending' && (
               <div className="flex items-center gap-1">
                 <FileText className="size-3 text-muted-foreground" />

@@ -464,6 +464,12 @@ export const api = {
         body: JSON.stringify({ category: category || 'llm', model }),
       }),
 
+    // Get active models for each AI category
+    getActiveModels: () =>
+      request<Record<string, { provider: string; model: string; name: string } | null>>(
+        '/api/ai/active-models'
+      ),
+
     // ---- Agent API ----
 
     // Agent execution with SSE streaming
