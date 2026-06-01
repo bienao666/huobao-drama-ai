@@ -26,12 +26,14 @@ export async function POST(request: NextRequest) {
 
     // Get character info for a personalized greeting
     let characterName = ''
+    let voiceStyle = ''
     if (characterId) {
       const character = await db.character.findUnique({
         where: { id: characterId },
       })
       if (character) {
         characterName = character.name
+        voiceStyle = character.voiceStyle || character.personality || ''
       }
     }
 
@@ -61,12 +63,16 @@ export async function POST(request: NextRequest) {
       text: sampleText,
       voiceId,
       speed: 1.0,
+      voiceStyle: voiceStyle || undefined,
     })
+
+    console.log(`[voice-sample] Generating sample: provider=${provider.provider}, model=${config.model}, voiceId=${voiceId}, text=${sampleText.slice(0, 30)}...`)
 
     const res = await fetch(req.url, {
       method: req.method,
       headers: req.headers,
       body: JSON.stringify(req.body),
+      signal: AbortSignal.timeout(60_000), // 60s timeout for TTS
     })
 
     if (!res.ok) {

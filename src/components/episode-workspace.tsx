@@ -553,11 +553,15 @@ export function EpisodeWorkspace() {
 
   const handleAssignVoice = async (characterId: string, voiceId: string) => {
     try {
-      await fetch(`/api/dramas/${selectedDramaId}/characters`, {
+      const res = await fetch(`/api/dramas/${selectedDramaId}/characters`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ characterId, voiceId }),
       })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+        throw new Error(errData.error || `音色分配失败 (${res.status})`)
+      }
       toast({ title: '音色已分配' })
       await fetchEpisode()
     } catch (err) {
@@ -1225,7 +1229,17 @@ export function EpisodeWorkspace() {
       setGeneratingTts(sb.id)
       setBatchProgress({ current: i + 1, total: pending.length, message: `生成配音 ${i + 1}/${pending.length}...` })
       try {
-        await api.ai.generateTts(sb.id, sb.dialogue!)
+        // Resolve voiceId from character lookup (same as single-shot handler)
+        let voiceId: string | undefined
+        if (sb.dialogueChar) {
+          const character = characters.find(
+            (c) => c.name.toLowerCase() === sb.dialogueChar!.toLowerCase()
+          )
+          if (character?.voiceId) {
+            voiceId = character.voiceId
+          }
+        }
+        await api.ai.generateTts(sb.id, sb.dialogue!, voiceId)
         successCount++
       } catch {
         // Continue
@@ -1905,6 +1919,12 @@ export function EpisodeWorkspace() {
               onChange={(m) => setWorkspaceModel('video', m)}
               disabled={isConfigLocked}
             />
+            <ModelSelector
+              category="tts"
+              value={workspaceModels.tts}
+              onChange={(m) => setWorkspaceModel('tts', m)}
+              disabled={isConfigLocked}
+            />
 
             {/* Lock/Unlock toggle */}
             <Tooltip>
@@ -2012,6 +2032,12 @@ export function EpisodeWorkspace() {
             category="video"
             value={workspaceModels.video}
             onChange={(m) => setWorkspaceModel('video', m)}
+            disabled={isConfigLocked}
+          />
+          <ModelSelector
+            category="tts"
+            value={workspaceModels.tts}
+            onChange={(m) => setWorkspaceModel('tts', m)}
             disabled={isConfigLocked}
           />
 

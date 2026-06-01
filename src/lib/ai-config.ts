@@ -855,8 +855,9 @@ export const aiClient = {
       const adapter = getTTSAdapter(provider.provider)
       const config = { baseUrl: provider.baseUrl, apiKey: provider.apiKey, model: provider.model }
 
-      const req = adapter.buildGenerateRequest(config, { text, voiceId, speed: 1.0 })
-      const res = await fetch(req.url, { method: req.method, headers: req.headers, body: JSON.stringify(req.body) })
+      const req = adapter.buildGenerateRequest(config, { text, voiceId, speed: 1.0, voiceStyle })
+      console.log(`[generateTts] provider=${provider.provider}, model=${config.model}, voiceId=${voiceId}, text=${text.slice(0, 30)}...`)
+      const res = await fetch(req.url, { method: req.method, headers: req.headers, body: JSON.stringify(req.body), signal: AbortSignal.timeout(60_000) })
 
       if (!res.ok) {
         const text = await res.text().catch(() => 'Unknown error')
