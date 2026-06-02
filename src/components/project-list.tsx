@@ -37,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { Plus, Film, Users, MapPin, Clock, Trash2, Settings, Upload, Library, Store } from 'lucide-react'
 import { Plus, Film, Users, MapPin, Clock, Trash2, Settings, Upload, Library, Layers } from 'lucide-react'
 import { UserMenu } from '@/components/user-menu'
 import { LanguageSwitcher } from '@/components/language-switcher'
@@ -190,7 +191,8 @@ function ProjectCard({
 // ── main component ───────────────────────────────────────────
 
 export function ProjectListView() {
-  const { dramas, setDramas, navigateToProject, navigateToSettings, navigateToAssetLibrary, navigateToSeries, setLoading, loading } = useAppStore()
+const { dramas, setDramas, navigateToProject, navigateToSettings, navigateToAssetLibrary, navigateToMarketplace, setLoading, loading } = useAppStore()
+const { dramas, setDramas, navigateToProject, navigateToSettings, navigateToAssetLibrary, navigateToSeries, setLoading, loading } = useAppStore()
   const { toast } = useToast()
   const perms = usePermissions()
   const tc = useTranslations('common')
@@ -304,7 +306,11 @@ export function ProjectListView() {
             <Button variant="outline" size="icon" onClick={navigateToAssetLibrary} title={tn('assetLibrary')}>
               <Library className="size-4" />
             </Button>
-            <Button variant="outline" size="icon" onClick={navigateToSettings} title={tn('settings')}>
+<Button variant="outline" size="icon" onClick={navigateToMarketplace} title="角色市场">
+              <Store className="size-4" />
+            </Button>
+            <Button variant="outline" size="icon" onClick={navigateToSettings} title="设置">
+<Button variant="outline" size="icon" onClick={navigateToSettings} title={tn('settings')}>
               <Settings className="size-4" />
             </Button>
             <LanguageSwitcher />
