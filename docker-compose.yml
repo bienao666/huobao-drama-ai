@@ -1,0 +1,33 @@
+services:
+  huobao-drama-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: huobao-drama-ai:latest
+    container_name: huobao-drama-ai
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXTAUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+      DATABASE_URL: file:/app/data/custom.db
+      DIRECT_URL: file:/app/data/custom.db
+      STORAGE_MODE: local
+      UPLOAD_DIR: /app/data/uploads
+    ports:
+      - "3000:3000"
+    volumes:
+      - huobao-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:3000/api/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+volumes:
+  huobao-data:
