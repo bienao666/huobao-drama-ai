@@ -206,6 +206,27 @@ sudo docker compose up --build -d
 
 或者把当前用户加入 `docker` 用户组后重新登录。
 
+### 构建时提示 Cannot find module '../server/require-hook'
+
+如果构建日志中出现类似错误：
+
+```text
+error: Cannot find module '../server/require-hook' from '/app/node_modules/.bin/next'
+```
+
+说明 Dockerfile 里仍在使用 `bunx next build`。请拉取最新代码，确认 Dockerfile 中的构建命令是：
+
+```dockerfile
+RUN node node_modules/next/dist/bin/next build
+```
+
+然后重新构建：
+
+```bash
+docker compose build --no-cache
+docker compose up -d
+```
+
 ### 需要清理旧镜像
 
 只清理未使用的镜像和缓存：

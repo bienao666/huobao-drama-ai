@@ -18,7 +18,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN mkdir -p /app/data \
   && node scripts/pre-dev.js
-RUN bunx next build
+RUN node node_modules/next/dist/bin/next build
 
 FROM oven/bun:1.2-debian AS runner
 WORKDIR /app
